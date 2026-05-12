@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-12 13:30 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-12 13:30">
+     with 2026-05-12 15:05 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-12 15:05">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -164,7 +164,7 @@ if ('serviceWorker' in navigator) {
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-12 13:30 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-12 15:05 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -760,7 +760,7 @@ if ('serviceWorker' in navigator) {
 <div id="resume-overlay">
   <div id="resume-box">
     <div id="resume-title">Welcome back</div>
-    <p id="resume-msg">We lost our audio while you were away. Click resume to rebuild it.</p>
+    <p id="resume-msg">We lost our audio while you were away. Click resume to restore it.</p>
     <button id="resume-btn-action" onclick="closeResume()">Resume</button>
   </div>
 </div>
@@ -776,6 +776,7 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <p class="info-p">Voice recognition allows you to control the app hands-free, but it does drain the battery faster.</p>
+    <p class="info-p">Use voice commands include "start", "play", "pause", "done", "ready". Say "reps" to open/close the rep-counter, and "good" or "wrong" after a good/bad rep. Say "review" to review your recording during micro-breaks... "re-play" to re-play it and "close" to exit the review. </p>
     <div class="welcome-push"></div>
     <div class="launch-buttons">
       <button class="launch-btn-primary" onclick="closeHello(true)">Start with voice recognition</button>
@@ -974,6 +975,7 @@ if ('serviceWorker' in navigator) {
 <script src="js/diag-log.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/audio-ctx.js"></script>
+<script src="js/wakelock.js"></script>
 <script src="js/chime-success.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/mic.js"></script>

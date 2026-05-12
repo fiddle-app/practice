@@ -392,6 +392,10 @@ function vcOnTranscript(text, isFinal) {
 function vcOnCommand(name, phrase) {
   const ctx = vcCurrentContext();
   console.debug(`[voice] command '${name}' from "${phrase}" in '${ctx}'`);
+  // Voice users may go long stretches without touching the screen.
+  // Treat any recognized command as activity so the 30-min idle timer
+  // doesn't release the wake lock out from under them.
+  if (typeof wlOnActivity === 'function') wlOnActivity('voice:' + name);
   const handlers = VOICE_CONTEXT_HANDLERS[ctx];
   if (!handlers) return;
   const fn = handlers[name];

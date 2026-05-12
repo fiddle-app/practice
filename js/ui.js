@@ -15,11 +15,15 @@ $('start-btn-inner').addEventListener('click', () => {
   // Voice commands also need the mic, so acquire if either feature is on.
   const needMic = settings.recording || settings.voiceCommands;
   const micP = needMic ? acquireMic() : Promise.resolve();
-  Promise.all([ensureAudio(), micP]).then(() => { startChunk(); });
+  Promise.all([ensureAudio(), micP]).then(() => {
+    wlAcquire('start-chunk');
+    startChunk();
+  });
 });
 $('review-btn').addEventListener('click', openReview);
 
 document.addEventListener('keydown', e => {
+  wlOnActivity('keydown');
   if ($('settings-overlay').classList.contains('open')) return;
   if ($('info-overlay').classList.contains('open')) return;
   if ($('review-overlay').classList.contains('open')) {
@@ -49,6 +53,12 @@ document.addEventListener('keydown', e => {
   }
   if (document.activeElement) document.activeElement.blur();
 });
+
+// Wake-lock activity hook: any tap anywhere is a "user is still here"
+// signal. Resets the 30-min idle timer; re-acquires the lock if intent
+// is still set but the sentinel was lost (e.g., after a visibility
+// regain). Passive — doesn't interfere with any other handler.
+document.addEventListener('pointerdown', () => { wlOnActivity('pointerdown'); }, { passive: true });
 
 // Safari bfcache restore: page may be brought back with stale DOM state
 // (transient overlays left open from last session). Force-close them on
@@ -1151,12 +1161,15 @@ function _onLaunchChoice(withVoice) {
     // pressure on cold launch).
     if (typeof vcKickOffLoad === 'function') vcKickOffLoad();
     Promise.all([audioP, micP]).then(() => {
+      wlAcquire('launch');
       if (typeof vcStart === 'function') vcStart();
     }).catch((e) => {
       console.warn('[ui] launch-choice audio init failed:', e);
     });
   } else {
-    Promise.all([audioP, micP]).catch((e) => {
+    Promise.all([audioP, micP]).then(() => {
+      wlAcquire('launch');
+    }).catch((e) => {
       console.warn('[ui] launch-choice audio init failed:', e);
     });
   }
@@ -1334,6 +1347,7 @@ function closeResume() {
       vcKickOffLoad();
     }
     Promise.all([audioP, micP]).then(() => {
+      wlAcquire('resume');
       // Three vc states are possible at this point:
       //   'ready'       — vc survived (most regains land here): explicit
       //                   vcStart needed; auto-start won't fire because
@@ -1348,7 +1362,9 @@ function closeResume() {
       }
     }).catch((e) => console.warn('[ui] resume failed:', e));
   } else {
-    Promise.all([audioP, micP]).catch((e) => console.warn('[ui] resume failed:', e));
+    Promise.all([audioP, micP]).then(() => {
+      wlAcquire('resume');
+    }).catch((e) => console.warn('[ui] resume failed:', e));
   }
 }
 
@@ -1459,6 +1475,12 @@ async function _onMaybeForegrounded() {
   // were silently rebuilt). Restore output gain and recording state.
   if (typeof unmuteMasterGain === 'function') unmuteMasterGain();
   if (typeof resumeRecording === 'function') resumeRecording();
+
+  // Reacquire the screen wake lock if intent is still set. iOS auto-
+  // releases the sentinel on background; this call is "best effort"
+  // because visibility-regain is not a gesture in iOS's view. If the
+  // request gets denied, the next real pointerdown will recover.
+  if (typeof wlOnActivity === 'function') wlOnActivity('visibility-regain');
 
   const voiceArmed = !!settings.voiceCommands &&
     (typeof _vcSuppressedThisSession === 'undefined' || !_vcSuppressedThisSession);

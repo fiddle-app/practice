@@ -1,0 +1,37 @@
+/* glyph-disc.css — shared dome-wrapper rules for status glyphs.
+   Canonical source: fiddle/_shared/design/glyph-disc.css.
+   Implements the soft-dome treatment defined in _shared/design/soft-dome.md
+   for the three small status states (empty / correct / wrong).
+
+   Layout wrappers (.prog-slot in ear-tuner, .rc-dot in microbreaker) and any
+   size-variant overrides (e.g. microbreaker's #rc-clear → 34×34) stay local
+   to each app. Only the glyph-disc itself lives here. */
+
+.prog-circle {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: -1.5px 2px 3px rgba(0,0,0,0.35);
+}
+.prog-circle.prog-empty {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 55%),
+    rgba(255,255,255,0.10);
+}
+.prog-circle.prog-correct {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 55%),
+    rgba(60,200,80,0.32);
+}
+.prog-circle.prog-wrong {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 55%),
+    rgba(210,50,40,0.32);
+}
+.prog-circle.prog-correct,
+.prog-circle.prog-wrong {
+  animation: popIn 0.22s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes popIn {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}

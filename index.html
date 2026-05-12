@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: rgb(13, 13, 13);">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-orientation" content="portrait">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Practice Buddy">
+<meta name="theme-color" id="meta-theme" content="#0d0d0d">
+<!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
+     check below to detect a hybrid-cache state at launch. Source ships
+     with 2026-05-12 12:24 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-12 12:24">
+<!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
+     "Add to Home Screen" does not reliably accept data: URLs or JS-generated
+     canvas icons. If you change this, test on iPad Safari: Share → Add to
+     Home Screen → confirm the icon appears on the home screen (not just in
+     the share-sheet preview). Regenerate the PNG from resources/app-icon.svg
+     via the svg-to-png skill. See _shared/design/Fiddle-Apps-Design-Intent.md
+     §PWA Home-Screen Icon. -->
+<link rel="apple-touch-icon" sizes="180x180" href="resources/app-icon-180.png">
+<link rel="icon" type="image/png" href="resources/app-icon-180.png">
+<script>if(/^((?!chrome|android).)*safari/i.test(navigator.userAgent))document.documentElement.classList.add('is-safari');</script>
+<!-- Boot watchdog — inline so a broken SW serving stale JS files can't
+     stop it from running. Crash-loop self-healing.
+
+     Detection model: the previous session is considered to have crashed
+     if it never wrote 'mb-clean-shutdown' = '1'. We write '0' at boot,
+     '1' on pagehide / visibility-hidden, and '0' again on visibility-visible
+     (so a crash *while foregrounded* — e.g. opening review mid-session —
+     is still detected on the next boot). Counter increments only on bad
+     shutdowns; resets on clean ones. Threshold of 3 means "three crashes
+     in a row" — normal manual reloads don't trigger recovery because
+     pagehide fires cleanly on those.
+
+     This replaces the prior 3-second alive-timer design, which couldn't
+     detect crashes that happened later than the timer fired. -->
+<script>
+(function () {
+  var COUNTER_KEY  = 'mb-boot-attempts';
+  var CLEAN_KEY    = 'mb-clean-shutdown';
+  var SUPPRESS_KEY = 'mb-test-suppress-clean';
+  var LIMIT        = 3;
+  var n = 0;
+  try {
+    // One-shot test flag from the #debug panel — consume on read so the
+    // current session's pagehide cycle doesn't get retroactively
+    // suppressed (only the *previous* session was simulated as crashed).
+    if (localStorage.getItem(SUPPRESS_KEY) === '1') {
+      localStorage.removeItem(SUPPRESS_KEY);
+    }
+    var prev = localStorage.getItem(CLEAN_KEY);
+    if (prev === '0') {
+      // Previous session crashed (no pagehide / visibility-hidden ever wrote '1')
+      n = (parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) || 0) + 1;
+    } else {
+      // Clean previous session, or first-ever boot
+      n = 1;
+    }
+    localStorage.setItem(COUNTER_KEY, String(n));
+    localStorage.setItem(CLEAN_KEY, '0');
+  } catch (e) { return; }
+
+  if (n >= LIMIT) {
+    try { console.warn('[boot-watchdog] ' + n + ' bad boots; clearing SW + caches'); } catch (e) {}
+    (async function () {
+      try {
+        if ('serviceWorker' in navigator) {
+          var regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(function (r) { return r.unregister(); }));
+        }
+        if ('caches' in window) {
+          var keys = await caches.keys();
+          await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+        }
+        try { localStorage.setItem(COUNTER_KEY, '0'); } catch (e) {}
+        try { localStorage.setItem(CLEAN_KEY, '1'); } catch (e) {}
+        window.location.replace(window.location.pathname);
+      } catch (e) {
+        try { console.error('[boot-watchdog] recovery failed:', e); } catch (_) {}
+      }
+    })();
+    return;
+  }
+
+  // Mark clean shutdown ONLY on pagehide. Earlier we also marked clean on
+  // visibilitychange→hidden, but iOS PWAs can be force-killed via the app
+  // switcher without ever firing pagehide — visibilitychange→hidden was
+  // the only event that ran. Treating that as clean defeated the watchdog:
+  // every kill-and-relaunch reset the bad-boot counter to 1, so a real
+  // crash loop never reached the LIMIT=3 recovery threshold.
+  //
+  // We compensate via an "init-complete" marker (see js/boot.js) — if the
+  // app survives 2s past first paint, we mark clean. That keeps a normal
+  // background-then-relaunch from being misclassified as a crash, while
+  // genuine boot-time crashes (which die before the timer fires) still
+  // count.
+  function markClean() {
+    if (localStorage.getItem(SUPPRESS_KEY) === '1') return;
+    try { localStorage.setItem(CLEAN_KEY, '1'); } catch (e) {}
+  }
+  function markRunning() {
+    try { localStorage.setItem(CLEAN_KEY, '0'); } catch (e) {}
+  }
+  window.addEventListener('pagehide', markClean);
+  document.addEventListener('visibilitychange', function () {
+    // Re-arm '0' on visible so a crash while foregrounded after returning
+    // from background is still detected. Do NOT mark clean on hidden —
+    // see comment block above.
+    if (document.visibilityState === 'visible') markRunning();
+  });
+})();
+</script>
+<!-- ── VERSION-COHERENCE CHECK ─────────────────────────────────────
+     Runs before any external JS or CSS loads. Compares the build
+     stamped into this HTML against the last build the user actually
+     finished launching (stored in localStorage under 'mb-last-build').
+     If they differ AND last is non-null, sets window._mbUpgrade so the
+     modal at the top of <body> shows. The modal's OK button unregisters
+     the SW + clears caches + reloads, ensuring the next launch is
+     coherent — guards against the iOS PWA hybrid state where new
+     index.html is served but old JS bundles still come from cache.
+     First-launch (last=null) just records and proceeds normally. -->
+<script>
+// Nudge the active SW to check for a new SW main script on every boot.
+// iOS PWA's default staleness threshold for SW update checks is 24h,
+// which is far too slow for our deploy cadence — Casey's app never
+// survives overnight, so without this nudge the user could go several
+// sessions on a stale build before iOS bothered to look for an update.
+//
+// update() fetches sw.js from the network, compares to the cached
+// copy, and (if different) installs the new SW. Our sw.js calls
+// skipWaiting() in its install handler and clients.claim() in
+// activate, so the new SW takes control of the current page
+// immediately rather than waiting for all clients to close — iOS
+// PWA's swipe-up "kill" doesn't reliably release SW control, so the
+// wait-for-clean-session approach left users stuck on stale builds.
+//
+// When the new SW claims the page, navigator.serviceWorker fires
+// 'controllerchange'. We listen and reload — that's what gets the
+// browser to actually fetch fresh HTML through the new SW. Without
+// the reload, the page stays in memory with stale JS even though the
+// SW is now serving new content for any future fetches. Use a
+// session-scoped guard to prevent reload loops if anything goes
+// sideways (e.g. multiple SW updates in quick succession).
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistration().then(function (reg) {
+    if (reg) reg.update().catch(function () {});
+  }).catch(function () {});
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    try {
+      if (sessionStorage.getItem('mb-sw-reloaded') === '1') return;
+      sessionStorage.setItem('mb-sw-reloaded', '1');
+    } catch (e) {}
+    window.location.reload();
+  });
+}
+</script>
+<script>
+(function () {
+  var meta    = document.querySelector('meta[name="microbreaker-build"]');
+  var current = (meta && meta.content) || null;
+  // Treat the unstamped placeholder as no-info (running source uncompiled).
+  // The placeholder string is built from string concatenation so the
+  // deploy.sh sed pass on this file (which replaces 2026-05-12 12:24 with
+  // the actual build) cannot match it as a contiguous substring. If we
+  // wrote the literal here, sed would replace this check itself, turning
+  // it into "if current === <build>" — i.e., treating every clean deploy
+  // as no-info. (Bug from earlier: caught when boot decision logged
+  // 'no-info (current=null)' on a correctly-stamped HTML.)
+  var PLACEHOLDER = '%' + '%BUILD_DATE%' + '%';
+  if (current === PLACEHOLDER) current = null;
+  var last = null;
+  try { last = localStorage.getItem('mb-last-build'); } catch (e) {}
+  var action;
+  if (current && last && current !== last) {
+    window._mbUpgrade = { from: last, to: current };
+    action = 'mismatch';
+  } else if (current && !last) {
+    window._mbUpgrade = null;
+    try { localStorage.setItem('mb-last-build', current); } catch (e) {}
+    action = 'first-seen';
+  } else if (current && last === current) {
+    window._mbUpgrade = null;
+    action = 'same';
+  } else {
+    window._mbUpgrade = null;
+    action = 'no-info';
+  }
+  // Forensic record so Settings → App Version can show what the
+  // inline script decided on the most recent boot. Useful for ruling
+  // out "did the modal flash because mismatch was detected, or did it
+  // not fire at all?" without needing console access.
+  try {
+    localStorage.setItem('mb-boot-decision', JSON.stringify({
+      ts: Date.now(), last: last, current: current, action: action
+    }));
+  } catch (e) {}
+})();
+</script>
+<!-- Self-contained styles for the upgrade modal. Deliberately NOT using
+     design-tokens.css / style.css — those live in separate cached files
+     that may themselves be from a stale version when the upgrade modal
+     needs to display. Soft-dome aesthetic is reproduced inline with
+     hardcoded colors (warm parchment + orange button) so the modal
+     renders correctly even if every other resource on the page is
+     broken or missing. -->
+<style>
+/* Full-screen, opaque — this is the FIRST screen a returning user sees
+   after an upgrade, not a modal floating over something else. The
+   parchment background matches Welcome / Hello visually but uses
+   hardcoded values so it renders even if external CSS is stale or
+   missing. Soft-dome aesthetic carries through to the OK button. */
+#upgrade-overlay {
+  position: fixed; inset: 0; z-index: 10000; display: none;
+  background: linear-gradient(180deg, #f1e8d4 0%, #e2d6ba 100%);
+  background-image: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.10) 100%),
+                    linear-gradient(180deg, #f1e8d4 0%, #e2d6ba 100%);
+  flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px 28px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #2a2118; text-align: center;
+}
+#upgrade-overlay.open { display: flex; }
+#upgrade-title {
+  font-size: 28px; font-weight: 700;
+  margin: 0 0 22px; color: #1f1812;
+  letter-spacing: 0.3px;
+}
+#upgrade-msg { font-size: 17px; line-height: 1.5; margin: 0 0 6px; color: #4a3f33; }
+#upgrade-version {
+  display: block; margin: 4px 0 36px;
+  font-family: 'Inconsolata', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 16px; color: #5a4a3a;
+}
+#upgrade-ok {
+  display: inline-block; padding: 14px 44px;
+  background: linear-gradient(180deg, #d77820 0%, #b56210 100%);
+  color: #fff; font-size: 17px; font-weight: 600;
+  border: none; border-radius: 14px;
+  -webkit-appearance: none; font-family: inherit; cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.20),
+    0 3px 10px rgba(0, 0, 0, 0.18);
+}
+#upgrade-ok:active {
+  background: linear-gradient(180deg, #b56210 0%, #8c4a08 100%);
+  transform: translateY(1px);
+}
+#upgrade-ok:disabled {
+  background: linear-gradient(180deg, #c8b89a 0%, #a99880 100%);
+  cursor: default; transform: none;
+}
+</style>
+<title>Practice Buddy</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="design-tokens.css">
+<link rel="stylesheet" href="design-tokens-app.css">
+<link rel="stylesheet" href="glyph-disc.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body style="background-color: rgb(13, 13, 13);">
+
+<!-- ── UPGRADE MODAL ──────────────────────────────────────────────
+     Shows when the version-coherence check in <head> detected a
+     mismatch between the HTML's stamped build and the last build
+     stored in localStorage. Self-contained: no external CSS or JS
+     deps, so it renders even if the rest of the page is from a
+     stale cache. Tap OK → unregister SW → clear all caches →
+     write new build to localStorage → reload. Next launch is
+     coherent on a single fresh version. -->
+<div id="upgrade-overlay" role="dialog" aria-modal="true" aria-labelledby="upgrade-title">
+  <div id="upgrade-title">App Updated</div>
+  <p id="upgrade-msg">Practice Buddy has been upgraded to</p>
+  <code id="upgrade-version">—</code>
+  <button id="upgrade-ok" type="button">OK</button>
+</div>
+<script>
+(function () {
+  var up = window._mbUpgrade;
+  if (!up) return;
+  var ov  = document.getElementById('upgrade-overlay');
+  var ver = document.getElementById('upgrade-version');
+  var btn = document.getElementById('upgrade-ok');
+  if (!ov || !btn) return;
+  if (ver) ver.textContent = up.to;
+  ov.classList.add('open');
+  // Disable the OK button for 1500 ms so ghost taps from launching the
+  // app icon (a finger still hovering when the modal renders) cannot
+  // immediately dismiss it. Visible state: dimmed; the user has time to
+  // see, read, and deliberately tap.
+  btn.disabled = true;
+  setTimeout(function () { btn.disabled = false; }, 1500);
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    btn.textContent = 'Updating…';
+    var finish = function () {
+      try { localStorage.setItem('mb-last-build', up.to); } catch (e) {}
+      window.location.replace(window.location.pathname);
+    };
+    var p = Promise.resolve();
+    if ('serviceWorker' in navigator) {
+      p = p.then(function () {
+        return navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (r) { return r.unregister(); }));
+        });
+      }).catch(function () {});
+    }
+    if (window.caches) {
+      p = p.then(function () {
+        return caches.keys().then(function (keys) {
+          return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+        });
+      }).catch(function () {});
+    }
+    p.then(finish, finish);
+  });
+})();
+</script>
+
+<!-- SPRITE-INLINE -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="icon-close-x" viewBox="0 0 34 34">
+    <circle cx="17" cy="17" r="15" stroke="currentColor" stroke-width="1.8" fill="none"/>
+      <path d="M11 11 L23 23 M23 11 L11 23" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="icon-gear" viewBox="0 0 100 100">
+    <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
+        d="M88 42h-5.8a33 33 0 0 0-3-7.2l4.1-4.1a4 4 0 0 0 0-5.6l-8.4-8.4a4 4 0 0 0-5.6 0l-4.1 4.1A33 33 0 0 0 58 17.8V12a4 4 0 0 0-4-4h-8a4 4 0 0 0-4 4v5.8a33 33 0 0 0-7.2 3l-4.1-4.1a4 4 0 0 0-5.6 0l-8.4 8.4a4 4 0 0 0 0 5.6l4.1 4.1A33 33 0 0 0 17.8 42H12a4 4 0 0 0-4 4v8a4 4 0 0 0 4 4h5.8a33 33 0 0 0 3 7.2l-4.1 4.1a4 4 0 0 0 0 5.6l8.4 8.4a4 4 0 0 0 5.6 0l4.1-4.1a33 33 0 0 0 7.2 3V88a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4v-5.8a33 33 0 0 0 7.2-3l4.1 4.1a4 4 0 0 0 5.6 0l8.4-8.4a4 4 0 0 0 0-5.6l-4.1-4.1a33 33 0 0 0 3-7.2H88a4 4 0 0 0 4-4v-8a4 4 0 0 0-4-4z
+           M50 35a15 15 0 1 0 0 30 15 15 0 0 0 0-30z"/>
+      <circle cx="50" cy="50" r="10" fill="currentColor"/>
+  </symbol>
+  <symbol id="icon-glyph-check" viewBox="0 0 28 28">
+    <path d="M8 14 L12 18 L20 10"
+            stroke="#6fe882" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="icon-glyph-x" viewBox="0 0 28 28">
+    <path d="M9 9 L19 19M19 9 L9 19"
+            stroke="#f07070" stroke-width="2.5"
+            stroke-linecap="round"/>
+  </symbol>
+  <symbol id="icon-info-i" viewBox="0 0 38 38">
+    <circle cx="19" cy="19" r="17" stroke="currentColor" stroke-width="1.8" fill="none"/>
+      <text x="19" y="26.5" text-anchor="middle" font-family="Georgia, serif"
+            font-size="21.6" font-style="italic" fill="currentColor">i</text>
+  </symbol>
+  <symbol id="icon-pause" viewBox="0 0 68 68">
+    <rect x="20" y="19" width="10" height="30" rx="3" fill="currentColor"/>
+      <rect x="38" y="19" width="10" height="30" rx="3" fill="currentColor"/>
+  </symbol>
+  <symbol id="icon-play" viewBox="0 0 68 68">
+    <path d="M26 20 L50 34 L26 48 Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="icon-rep-counter" viewBox="-10 25 1220 1220">
+    <!-- Circular arrow ring: exact path copied verbatim from icon-replay.svg
+           (the "Replay affordance" the rep-counter spec calls for). -->
+      <path d="m1053.6 362.4c-19.199-30-58.801-40.801-88.801-21.602-31.199 19.199-40.801 58.801-21.602 91.199 43.199 70.801 64.801 157.2 56.398 248.4-19.199 193.2-177.6 346.8-372 360-235.2 15.602-430.8-171.6-428.4-404.4 2.3984-216 178.8-393.6 393.6-397.2 12 0 22.801 0 34.801 1.1992v50.398c0 20.398 22.801 32.398 39.602 21.602l187.2-116.4c15.602-9.6016 15.602-33.602 0-43.199l-188.4-118.8c-16.801-10.801-39.602 1.1992-39.602 21.602v52.801c-8.3984-0.003906-16.797-0.003906-26.398-0.003906-306 0-553.2 260.4-529.2 571.2 19.199 260.4 229.2 470.4 488.4 489.6 310.8 22.801 572.4-223.2 572.4-529.2 0.003906-102-28.797-196.8-77.996-277.2z" fill="currentColor"/>
+      <!-- Inner checkmark, sized to occupy roughly the same footprint as the
+           replay icon's play triangle. -->
+      <path d="M 460 660 L 580 790 L 810 480"
+            stroke="currentColor" stroke-width="86" fill="none"
+            stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="icon-skip-back" viewBox="0 0 46 46">
+    <rect x="7" y="11" width="5" height="24" rx="2" fill="currentColor"/>
+      <path d="M38 11 L16 23 L38 35 Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="icon-skip-forward" viewBox="0 0 46 46">
+    <path d="M8 11 L30 23 L8 35 Z" fill="currentColor"/>
+      <rect x="34" y="11" width="5" height="24" rx="2" fill="currentColor"/>
+  </symbol>
+  <symbol id="icon-waveform" viewBox="0 0 96 22">
+    <rect x="0" y="10" width="2.5" height="2" rx="1.25" fill="#fff" fill-opacity="0.10"/>
+      <rect x="4" y="8" width="2.5" height="6" rx="1.25" fill="#fff" fill-opacity="0.20"/>
+      <rect x="8" y="5" width="2.5" height="12" rx="1.25" fill="#fff" fill-opacity="0.35"/>
+      <rect x="12" y="2" width="2.5" height="18" rx="1.25" fill="#fff" fill-opacity="0.55"/>
+      <rect x="16" y="0" width="2.5" height="22" rx="1.25" fill="#fff" fill-opacity="0.78"/>
+      <rect x="20" y="1" width="2.5" height="20" rx="1.25" fill="#fff" fill-opacity="1.00"/>
+      <rect x="24" y="3" width="2.5" height="16" rx="1.25" fill="#fff" fill-opacity="0.82"/>
+      <rect x="28" y="6" width="2.5" height="10" rx="1.25" fill="#fff" fill-opacity="0.62"/>
+      <rect x="32" y="8" width="2.5" height="6" rx="1.25" fill="#fff" fill-opacity="0.42"/>
+      <rect x="36" y="6" width="2.5" height="10" rx="1.25" fill="#fff" fill-opacity="0.48"/>
+      <rect x="40" y="1" width="2.5" height="20" rx="1.25" fill="#fff" fill-opacity="0.72"/>
+      <rect x="44" y="0" width="2.5" height="22" rx="1.25" fill="#fff" fill-opacity="0.95"/>
+      <rect x="48" y="3" width="2.5" height="16" rx="1.25" fill="#fff" fill-opacity="0.82"/>
+      <rect x="52" y="6" width="2.5" height="10" rx="1.25" fill="#fff" fill-opacity="0.58"/>
+      <rect x="56" y="4" width="2.5" height="14" rx="1.25" fill="#fff" fill-opacity="0.68"/>
+      <rect x="60" y="1" width="2.5" height="20" rx="1.25" fill="#fff" fill-opacity="0.88"/>
+      <rect x="64" y="3" width="2.5" height="16" rx="1.25" fill="#fff" fill-opacity="0.78"/>
+      <rect x="68" y="5" width="2.5" height="12" rx="1.25" fill="#fff" fill-opacity="0.58"/>
+      <rect x="72" y="8" width="2.5" height="6" rx="1.25" fill="#fff" fill-opacity="0.38"/>
+      <rect x="76" y="6" width="2.5" height="10" rx="1.25" fill="#fff" fill-opacity="0.42"/>
+      <rect x="80" y="8" width="2.5" height="6" rx="1.25" fill="#fff" fill-opacity="0.26"/>
+      <rect x="84" y="9" width="2.5" height="4" rx="1.25" fill="#fff" fill-opacity="0.16"/>
+      <rect x="88" y="10" width="2.5" height="2" rx="1.25" fill="#fff" fill-opacity="0.08"/>
+      <rect x="92" y="10" width="2.5" height="2" rx="1.25" fill="#fff" fill-opacity="0.04"/>
+  </symbol>
+</svg>
+<!-- /SPRITE-INLINE -->
+
+<div id="bg-fill" style="background-color: rgb(13, 13, 13);"></div>
+<div id="app" style="background-color: rgb(30, 30, 30);">
+  <!-- TOP -->
+  <div id="top-section">
+    <div id="phase-label"></div>
+    <div id="label-gap"></div>
+    <div id="progress-section" style="visibility: hidden;">
+      <div id="bar-stack">
+        <div id="macro-bar-track">
+          <div id="macro-bar"></div>
+          <div id="overage-bar-black"></div>
+          <div id="overage-bar-yellow"></div>
+        </div>
+      </div>
+      <div id="time-progress"></div>
+    </div>
+  </div>
+
+  <!-- MIDDLE -->
+  <div id="mid-section">
+    <div id="mid-zone">
+      <div id="rest-questions" style="display: flex;">
+        <p>What is your goal?</p>
+        <p>How will you achieve it?</p>
+        <p style="display: none;"></p>
+      </div>
+      <div id="round-counter"></div>
+      <div id="chunk-summary"></div>
+    </div>
+    <div id="ring-wrap">
+      <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+        <circle id="ring-bg" cx="128" cy="128" r="110" stroke-width="10" fill="none" stroke="rgba(255,255,255,0.10)" style="opacity: 0;"></circle>
+        <circle id="ring-fg" cx="128" cy="128" r="110" stroke-width="10" fill="none" stroke="rgba(255,255,255,0.82)" stroke-linecap="round" stroke-dasharray="691.150" transform="rotate(-90 128 128)" style="stroke-dashoffset: 691.15; opacity: 0;"></circle>
+      </svg>
+      <div id="ring-center">
+        <div id="time-display" style="display: none;"></div>
+        <div id="ready-ring-text" style="display: block;">Ready?</div>
+      </div>
+    </div>
+    <div id="lower-zone">
+      <button id="rc-toggle-btn" aria-label="Repetition counter" hidden>
+        <svg width="38" height="38" aria-hidden="true"><use href="#icon-rep-counter"/></svg>
+      </button>
+      <div id="rep-counter-panel" hidden>
+        <div class="rc-stepper">
+          <button class="rc-step" id="rc-plus" aria-label="Increase rep target">+</button>
+          <button class="rc-step" id="rc-minus" aria-label="Decrease rep target">−</button>
+        </div>
+        <div id="rc-circles" role="group" aria-label="Repetition tracker"></div>
+        <button id="rc-clear" aria-label="Clear all reps">
+          <div class="prog-circle prog-wrong" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+              <use href="#icon-glyph-x"/>
+            </svg>
+          </div>
+        </button>
+      </div>
+      <div id="message"></div>
+      <div id="review-slot-lower">
+        <div style="flex:1"></div>
+        <div id="rest-report"></div>
+        <button id="review-btn" aria-label="Review Recording" style="display: none;">
+          <svg width="96" height="22" viewBox="0 0 96 22" style="flex-shrink:0">
+            <use href="#icon-waveform"/>
+          </svg>
+        </button>
+        <div style="flex:1"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div id="bottom-section">
+    <div id="controls" style="display: none;">
+      <button class="ctrl-btn" id="btn-prev" aria-label="Restart phase">
+        <svg width="46" height="46" viewBox="0 0 46 46" fill="none">
+          <use href="#icon-skip-back"/>
+        </svg>
+      </button>
+      <button class="ctrl-btn" id="btn-play-pause" aria-label="Play/Pause">
+        <svg id="pp-icon-play" width="68" height="68" viewBox="0 0 68 68" fill="none" style="display: block;">
+          <use href="#icon-play"/>
+        </svg>
+        <svg id="pp-icon-pause" width="68" height="68" viewBox="0 0 68 68" fill="none" style="display:none">
+          <use href="#icon-pause"/>
+        </svg>
+      </button>
+      <button class="ctrl-btn" id="btn-next" aria-label="Next phase">
+        <svg width="46" height="46" viewBox="0 0 46 46" fill="none">
+          <use href="#icon-skip-forward"/>
+        </svg>
+      </button>
+    </div>
+    <div id="start-btn" style="display: flex;">
+      <button id="start-btn-inner">Start Practice</button>
+    </div>
+    <div id="bottom-spacer"></div>
+  </div>
+</div>
+
+<!-- Rep-counter celebration message — outside #app so it isn't clipped by
+     #mid-section's overflow:hidden, and renders above #bottom-section on
+     iPad's compressed layout. Position is set in JS, anchored to the panel. -->
+<div id="rc-congrats" aria-live="polite">Congratulations!</div>
+
+<!-- Live transcript echo — what the recognizer is hearing. Anchored
+     bottom-center via CSS, vertically center-aligned with the settings
+     and info icons. Auto-clears after 2s unless settings.vcKeepLastWord
+     is on (in which case finals stay until replaced). -->
+<div id="vc-transcript" aria-live="polite"></div>
+
+<!-- Voice-model load indicator (shown while Vosk's worker fetches + extracts).
+     Indeterminate for now — Vosk owns the load, and we haven't wired its
+     worker.log() messages to a percentage yet. Once the desktop console
+     output is captured we can redesign this with a real progress bar. -->
+<div id="vc-loader" hidden>
+  <div id="vc-loader-box">
+    <div id="vc-loader-title">Loading voice assets…</div>
+    <div id="vc-loader-status">First load may take 5–15 seconds.</div>
+  </div>
+</div>
+
+<!-- Close button (fixed, lower right) -->
+<button id="close-btn" aria-label="Close app" style="opacity: 0; pointer-events: none;">
+  <svg width="38" height="38" aria-hidden="true"><use href="#icon-close-x"/></svg>
+</button>
+
+<!-- Info button (fixed, lower right — shown in rest/ready phases) -->
+<button id="info-btn" aria-label="About this app" style="opacity: 1; pointer-events: auto;">
+  <svg width="38" height="38" aria-hidden="true"><use href="#icon-info-i"/></svg>
+</button>
+
+<!-- Settings gear (fixed, lower left) -->
+<button id="settings-btn" aria-label="Settings">
+  <svg width="36" height="36" aria-hidden="true"><use href="#icon-gear"/></svg>
+</button>
+
+<!-- INFO OVERLAY -->
+<div id="info-overlay">
+  <button id="info-close-btn" aria-label="Close">
+    <svg width="34" height="34" aria-hidden="true"><use href="#icon-close-x"/></svg>
+  </button>
+  <div id="info-content">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
+      <img id="info-app-icon" src="resources/app-icon-180.png" width="60" height="60" style="border-radius:13px;flex-shrink:0;" alt="Practice Buddy icon"/>
+      <div>
+        <div class="info-heading">Practice Buddy</div>
+        <div class="info-subheading">Helping you practice efficiently</div>
+      </div>
+    </div>
+    <hr class="info-divider">
+    <p class="info-p">This music practice timer is inspired by the work of <a href="https://www.mollygebrian.com/" target="_blank">Molly Gebrian</a> and incorporates some of her suggestions for efficient practice.</p>
+    <p class="info-p"><strong>"Micro-breaks"</strong> are 10–20 second pauses that allow your brain to consolidate what you were just practicing.</p>
+    <p class="info-p">The app encourages working in <strong>chunks</strong> of 5–10 minutes, with 1–3 minute rests between chunks.</p>
+    <p class="info-p"><strong>Interleaved practice</strong> is encouraged — choose a different piece, passage, etude, or technique for each chunk. See Molly's work for the compelling research behind this.</p>
+    <p class="info-p"><strong>Recording yourself</strong> is encouraged! Each practice round is recorded. Review it using the "waveform" button in the micro-break. You can turn recordings off in Settings.</p>
+    <p class="info-p">The <strong>keyboard shortcuts</strong> work with a "page turner" footpedal (that can emulate a "SPACE" or "ENTER" key.) They eliminate most of your need to touch the screen during a normal practice flow.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:clamp(12px,3vw,16px);font-weight:300;margin-top:4px;">
+      <thead>
+        <tr style="border-bottom:1px solid rgba(0,0,0,0.18);">
+          <th style="text-align:left;padding:5px 8px 5px 0;font-weight:600;">Phase</th>
+          <th style="text-align:center;padding:5px 8px;font-weight:600;">SPACE</th>
+          <th style="text-align:center;padding:5px 0 5px 8px;font-weight:600;">ENTER</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid rgba(0,0,0,0.08);"><td style="padding:5px 8px 5px 0;">Practice</td><td style="text-align:center;padding:5px 8px;">Pause / Play</td><td style="text-align:center;padding:5px 0 5px 8px;">End Round</td></tr>
+        <tr style="border-bottom:1px solid rgba(0,0,0,0.08);"><td style="padding:5px 8px 5px 0;">Micro-Break</td><td style="text-align:center;padding:5px 8px;">Pause / Play</td><td style="text-align:center;padding:5px 0 5px 8px;">Review Recording</td></tr>
+        <tr style="border-bottom:1px solid rgba(0,0,0,0.08);"><td style="padding:5px 8px 5px 0;">Review</td><td style="text-align:center;padding:5px 8px;">Pause / Play</td><td style="text-align:center;padding:5px 0 5px 8px;">Close</td></tr>
+        <tr style="border-bottom:1px solid rgba(0,0,0,0.08);"><td style="padding:5px 8px 5px 0;">Rest "Countdown"</td><td style="text-align:center;padding:5px 8px;">Pause / Play</td><td style="text-align:center;padding:5px 0 5px 8px;">End Countdown</td></tr>
+        <tr><td style="padding:5px 8px 5px 0;">Rest "Ready?"</td><td style="text-align:center;padding:5px 8px;">Start Practice</td><td style="text-align:center;padding:5px 0 5px 8px;">Start Practice</td></tr>
+      </tbody>
+    </table>
+    <p class="info-p">If <strong>"Automatically advance"</strong> is on in Settings, it automatically advances to the micro-break at the end of a practice round. If it is off, you get an audible notification when a practice round ends, but you must skip to the next phase manually.</p>
+    <p class="info-p">To add this app to your iPhone or iPad home screen, tap the <strong>Share</strong> button in Safari, then tap <strong>"Add to Home Screen."</strong></p>
+    <p class="info-p">If the record/review feature is not working on iPhone or iPad, go to <strong>Settings → Safari → Microphone</strong> and make sure it is not set to "Deny."</p>
+    <p class="info-p">The microphone indicator stays on between practice rounds — this is intentional, to avoid re-requesting microphone permission. Recording only occurs during the Practice phase.</p>
+    <p class="info-p">If you have feedback, email <a id="contact-link" href="mailto:microbreaktimer@gmail.com">microbreaktimer@gmail.com</a>.</p>
+    <p class="info-p" style="opacity:0.45;" id="build-date-display"></p>
+    <p style="font-family:var(--font-info);font-size:var(--font-info-subheading);color:rgba(0,0,0,0.40);line-height:1.6;margin-top:4px;">
+      Eighth note icon by <a href="https://commons.wikimedia.org/wiki/File:Eighth_Note.svg" target="_blank" style="color:rgba(0,0,0,0.50);">PianistHere</a>, used under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" style="color:rgba(0,0,0,0.50);">CC BY-SA 4.0</a>.
+    </p>
+  </div>
+  <button id="info-close-btn-bottom" aria-label="Close">
+    <svg width="34" height="34" aria-hidden="true"><use href="#icon-close-x"/></svg>
+  </button>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div id="settings-overlay">
+  <button id="s-done-btn" aria-label="Close settings">
+    <svg aria-hidden="true"><use href="#icon-close-x"/></svg>
+  </button>
+  <div id="settings-scroll">
+  <div id="settings-inner">
+  <div class="s-title-row"><div class="s-title">Settings</div></div>
+  <div class="s-sec">Durations</div>
+  <div class="s-row"><div class="s-label">Practice Chunk</div><div class="s-stepper"><button class="step-btn" data-field="chunkDur" data-dir="-1">−</button><div class="s-val" id="sv-chunk">5:00</div><button class="step-btn" data-field="chunkDur" data-dir="1">+</button></div></div>
+  <div class="s-row"><div class="s-label">Practice Round</div><div class="s-stepper"><button class="step-btn" data-field="workDur" data-dir="-1">−</button><div class="s-val" id="sv-work">45s</div><button class="step-btn" data-field="workDur" data-dir="1">+</button></div></div>
+  <div class="s-row"><div class="s-label">Micro-break</div><div class="s-stepper"><button class="step-btn" data-field="breakDur" data-dir="-1">−</button><div class="s-val" id="sv-break">15s</div><button class="step-btn" data-field="breakDur" data-dir="1">+</button></div></div>
+  <div class="s-row"><div class="s-label">Rest</div><div class="s-stepper"><button class="step-btn" data-field="restDur" data-dir="-1">−</button><div class="s-val" id="sv-rest">2:00</div><button class="step-btn" data-field="restDur" data-dir="1">+</button></div></div>
+  <div class="s-row"><div class="s-label">Maximum Recording</div><div class="s-stepper"><button class="step-btn" data-field="maxRecDur" data-dir="-1">−</button><div class="s-val" id="sv-maxrec">10:00</div><button class="step-btn" data-field="maxRecDur" data-dir="1">+</button></div></div>
+  <div class="tog-row"><div class="tog-label">Include breaks in practice time</div><label class="tog-sw"><input type="checkbox" id="s-breaks-count"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+  <div class="s-sec">Behavior</div>
+  <div class="tog-row"><div class="tog-label">Automatically Advance</div><label class="tog-sw"><input type="checkbox" id="s-auto"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+  <div class="tog-row"><div class="tog-label">Record / Review Practice</div><label class="tog-sw"><input type="checkbox" id="s-record"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+  <div class="tog-row"><div class="tog-label">Listen for voice commands</div><label class="tog-sw"><input type="checkbox" id="s-voice"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+  <div class="s-row" style="padding: 8px 0; align-items: center;">
+    <div class="s-label" style="flex:1;">Notification Volume</div>
+    <div class="s-stepper" style="width:142px;display:flex;align-items:center;gap:6px;">
+      <div style="position:relative;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;">
+        <svg id="s-vol-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M3 9v6h4l5 5V4L7 9H3z" fill="rgba(255,255,255,0.70)"></path>
+          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" fill="rgba(255,255,255,0.70)"></path>
+          <path d="M19.5 12c0 3.04-1.73 5.68-4.25 7.03l-.75-1.3A7 7 0 0 0 18 12a7 7 0 0 0-3.5-6.06l.74-1.3C17.77 6.32 19.5 8.96 19.5 12z" fill="rgba(255,255,255,0.40)"></path>
+        </svg>
+        <div id="s-vol-muted" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,80,80,0.90)" stroke-width="2.5" stroke-linecap="round"></line></svg>
+        </div>
+      </div>
+      <input type="range" id="s-vol" min="0.0" max="1.0" step="0.05" value="0.35" style="flex:1;">
+    </div>
+  </div>
+  <div class="s-sec">Rest Questions</div>
+  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:8px; padding: 10px 0;">
+    <input type="text" class="msg-inp" id="s-restq1" placeholder="Question 1">
+    <input type="text" class="msg-inp" id="s-restq2" placeholder="Question 2">
+    <input type="text" class="msg-inp" id="s-restq3" placeholder="Question 3 (optional)">
+  </div>
+  <div class="s-sec">Micro-break reminders</div>
+  <div id="msg-list"></div>
+  <button id="add-msg-btn">+ Add reminder</button>
+  <div class="s-sec">Voice Recognition</div>
+  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:14px; padding: 10px 0;">
+    <div>
+      <div class="s-label" style="margin-bottom:8px;">Words for &ldquo;correct&rdquo;</div>
+      <div id="vr-good-list"></div>
+      <button id="add-vr-good-btn" class="add-list-btn">+ Add word</button>
+    </div>
+    <div>
+      <div class="s-label" style="margin-bottom:8px;">Words for &ldquo;wrong&rdquo;</div>
+      <div id="vr-bad-list"></div>
+      <button id="add-vr-bad-btn" class="add-list-btn">+ Add word</button>
+    </div>
+    <div class="s-sub" style="line-height:1.5;">
+      Built-in commands also include:
+      &ldquo;start&rdquo;, &ldquo;ready&rdquo;, &ldquo;done&rdquo;, &ldquo;next&rdquo;,
+      &ldquo;pause&rdquo;, &ldquo;play&rdquo;,
+      &ldquo;settings&rdquo;, &ldquo;info&rdquo;, &ldquo;information&rdquo;, &ldquo;close&rdquo;,
+      &ldquo;review&rdquo;, &ldquo;recording&rdquo;, &ldquo;replay&rdquo;,
+      and &ldquo;rep counter&rdquo; / &ldquo;counter&rdquo; / &ldquo;reps&rdquo;.
+      Each works only on the screens where its action makes sense.
+    </div>
+  </div>
+  <div class="s-sec">Diagnostics</div>
+  <div class="tog-row"><div class="tog-label">Limit VR Vocabulary</div><label class="tog-sw"><input type="checkbox" id="s-limit-vr"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+  <div class="tog-row"><div class="tog-label">Keep last word on-screen</div><label class="tog-sw"><input type="checkbox" id="s-vc-keep"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+  <div class="s-row"><div><div class="s-label">Voice Model</div><div class="s-sub" id="s-vc-status">—</div></div><button class="log-action-btn" id="s-vc-wipe-cache" title="Delete the cached Vosk model (debug)">Wipe cache</button></div>
+  <div class="s-row"><div><div class="s-label">Welcome Screen</div><div class="s-sub">Reset to show on next launch</div></div><button id="welcome-reset-btn" class="log-action-btn" onclick="resetWelcome()">Reset</button></div>
+  <div class="s-row"><div><div class="s-label">App Version</div><div class="s-sub" id="s-build-date"></div><div class="s-sub" id="s-sw-status" style="margin-top:1px; white-space: pre-line;"></div></div><button class="log-action-btn" onclick="reloadFromServer()">Reload</button></div>
+  <div class="s-row"><div style="flex:1;"><div class="s-label">Memory</div><div class="s-sub" id="s-mem-status">—</div></div><button id="s-mem-refresh" class="log-action-btn">Refresh</button></div>
+  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:6px; padding: 8px 0;">
+    <div class="s-label">Error log</div>
+    <pre id="diag-log-display" style="max-height: 220px; overflow-y: auto; font-family: 'Inconsolata', monospace; font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; padding: 8px; background: rgba(0,0,0,0.4); color: rgba(245, 239, 230, 0.65); border-radius: 4px; margin: 0;">(empty)</pre>
+    <div style="display: flex; gap: 8px;">
+      <button id="diag-log-refresh" class="log-action-btn" style="flex: 1;">Refresh</button>
+      <button id="diag-log-copy" class="log-action-btn" style="flex: 1;">Copy log</button>
+      <button id="diag-log-clear" class="log-action-btn" style="flex: 1;">Clear log</button>
+    </div>
+  </div>
+  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:6px; padding: 8px 0;">
+    <div class="s-label">Crash recovery</div>
+    <div id="s-boot-status" class="s-sub" style="font-family: 'Inconsolata', monospace; font-size: 11px;">—</div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <button id="s-sim-crash"    class="log-action-btn" style="flex: 1; min-width: 130px;">Simulate crash + reload</button>
+      <button id="s-reset-counter" class="log-action-btn" style="flex: 1; min-width: 130px;">Reset boot counter</button>
+    </div>
+    <div class="s-sub" style="line-height: 1.5;">
+      The watchdog auto-recovers (clears service worker + caches, reloads from network) after 3 crashes in a row.
+      Press <strong>Simulate crash + reload</strong> three times to test the full path without an actual crash.
+    </div>
+  </div>
+  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:6px; padding: 8px 0;">
+    <div class="s-label">Audio interruption test</div>
+    <div class="s-sub" style="line-height: 1.5;">
+      Runs the same pause/resume cycle that fires on a real visibility transition, without actually backgrounding. Tests whether the iOS chime tones come from our pause logic or from iOS's own AVAudioSession lifecycle.
+    </div>
+    <button id="s-sim-visibility" class="log-action-btn">Simulate 3s visibility loss</button>
+  </div>
+  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:6px; padding: 8px 0;">
+    <div class="s-label">Hard reset</div>
+    <div class="s-sub" style="line-height: 1.5;">
+      Wipes ALL local data — settings, diag log, voice cache, service worker. Requires internet on next launch. Use only if Reload doesn't help (fonts broken, version blank, app behaving strangely).
+    </div>
+    <button id="s-hard-reset-btn" class="log-action-btn" style="background: rgba(220,80,80,0.18); color: rgba(255,200,200,0.95);">Hard reset</button>
+  </div>
+  <button id="s-reset-btn">Reset to defaults…</button>
+  <div style="height:28px"></div>
+  </div>
+  </div>
+</div>
+
+<!-- Reset confirmation dialog -->
+<div id="reset-overlay">
+  <div id="reset-box">
+    <div id="reset-title">Reset to defaults</div>
+    <div id="reset-msg">Also reset reminders and voice-recognition synonyms?</div>
+    <div id="reset-btns">
+      <button id="reset-yes">Yes, reset everything</button>
+      <button id="reset-no">No, keep my lists</button>
+      <button id="reset-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- WELCOME OVERLAY -->
+<div id="welcome-overlay">
+  <div id="welcome-content">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
+      <img id="welcome-app-icon" src="resources/app-icon-180.png" width="60" height="60" style="border-radius:13px;flex-shrink:0;" alt="Practice Buddy icon"/>
+      <div>
+        <div class="info-heading">Practice Buddy</div>
+        <div class="info-subheading">Helping you practice efficiently</div>
+      </div>
+    </div>
+    <div class="info-p"><strong>Practice Buddy</strong>:
+      <ul style="margin:0.3em 0 0 1.2em;padding:0;line-height:1.7;">
+        <li>Automatically records each "round" of practice.</li>
+        <li>Has a "rep counter" <svg width="20" height="20" aria-hidden="true" style="vertical-align:middle;"><use href="#icon-rep-counter"/></svg> that counts "correct" repetitions hands-free.
+          <ul style="margin:0.2em 0 0 1.2em;padding:0;">
+            <li>Say "good" for success or "wrong" for a failure.</li>
+            <li>Have fun discovering all of the alternate words for success and failure... NSFW.</li>
+          </ul>
+        </li>
+        <li>Reminds you to take "micro-breaks" between rounds, where you can review your recording with one click.</li>
+        <li>Asks you "intentional practice" questions and offers reminders that you can customize.</li>
+      </ul>
+    </div>
+    <p class="info-p">Tap <button class="welcome-inline-btn" onclick="$('info-overlay').classList.add('open');" aria-label="Info"><svg width="22" height="22" aria-hidden="true"><use href="#icon-info-i"/></svg></button> (lower right) for more info on efficient practice.</p>
+    <p class="info-p">Tap <button class="welcome-inline-btn" onclick="$('settings-overlay').classList.add('open');" aria-label="Settings"><svg width="20" height="20" aria-hidden="true"><use href="#icon-gear"/></svg></button> (lower left) to set timer durations and customize reminders.</p>
+    <div class="welcome-push"></div>
+    <div class="launch-buttons">
+      <button id="welcome-yes-voice" class="launch-btn-primary" onclick="closeWelcome(true)">Start with voice recognition</button>
+      <button id="welcome-no-voice" class="launch-btn-secondary" onclick="closeWelcome(false)">No thanks, I'll use the buttons</button>
+    </div>
+    <div class="welcome-push"></div>
+    <div class="launch-build-date" id="welcome-build-date"></div>
+  </div>
+</div>
+
+<!-- RESUME SCREEN — modal dialog over current screen on visibility-restore.
+     Per Apple, restarting the microphone after a backgrounding requires a
+     fresh user gesture; this overlay makes that explicit instead of
+     silently waiting for the user to tap something. -->
+<div id="resume-overlay">
+  <div id="resume-box">
+    <div id="resume-title">Welcome back</div>
+    <p id="resume-msg">We lost our audio while you were away. Click resume to rebuild it.</p>
+    <button id="resume-btn-action" onclick="closeResume()">Resume</button>
+  </div>
+</div>
+
+<!-- HELLO OVERLAY (daily affirmation; smaller than Welcome) -->
+<div id="hello-overlay">
+  <div id="hello-content">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
+      <img src="resources/app-icon-180.png" width="60" height="60" style="border-radius:13px;flex-shrink:0;" alt="Practice Buddy icon"/>
+      <div>
+        <div class="info-heading">Hello!</div>
+        <div class="info-subheading">Ready to practice?</div>
+      </div>
+    </div>
+    <p class="info-p">Voice recognition allows you to control the app hands-free, but it does drain the battery faster.</p>
+    <div class="welcome-push"></div>
+    <div class="launch-buttons">
+      <button class="launch-btn-primary" onclick="closeHello(true)">Start with voice recognition</button>
+      <button class="launch-btn-secondary" onclick="closeHello(false)">No thanks, I'll use the buttons</button>
+    </div>
+    <div class="welcome-push"></div>
+    <div class="launch-build-date" id="hello-build-date"></div>
+  </div>
+</div>
+
+<!-- REVIEW OVERLAY -->
+<div id="review-overlay">
+  <div id="rev-title">Review</div>
+  <div id="rev-spacer-top"></div>
+  <div id="rev-times"><span id="rev-cur">0:00</span><span id="rev-sep"> / </span><span id="rev-dur">--:--</span></div>
+  <div id="rev-wave"><canvas id="rev-canvas"></canvas><div id="rev-prog"></div></div>
+  <div id="rev-bottom-group">
+    <div id="rev-controls">
+      <button class="rev-btn rev-sm" id="rev-restart" aria-label="Back to start"><svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect x="3" y="4" width="3.5" height="18" rx="1.5" fill="white"></rect><path d="M22 4 L9 13 L22 22 Z" fill="white"></path></svg></button>
+      <button class="rev-btn rev-sm" id="rev-back5" aria-label="Back 5s"><svg width="26" height="26" viewBox="0 0 26 26" fill="none"><path d="M20 4 L7 13 L20 22 Z" fill="white"></path></svg></button>
+      <button class="rev-btn rev-lg" id="rev-playpause" aria-label="Play/Pause">
+        <svg id="rev-icon-play" width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M8 4 L28 16 L8 28 Z" fill="white"></path></svg>
+        <svg id="rev-icon-pause" width="32" height="32" viewBox="0 0 32 32" fill="none" style="display:none"><rect x="4" y="3" width="9" height="26" rx="2.5" fill="white"></rect><rect x="19" y="3" width="9" height="26" rx="2.5" fill="white"></rect></svg>
+      </button>
+      <button class="rev-btn rev-sm" id="rev-fwd5" aria-label="Forward 5s"><svg width="26" height="26" viewBox="0 0 26 26" fill="none"><path d="M6 4 L19 13 L6 22 Z" fill="white"></path></svg></button>
+      <button class="rev-btn rev-sm rev-exit-btn" id="rev-exit" aria-label="Close review"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M4 4 L18 18M18 4 L4 18" stroke="#e03030" stroke-width="2.6" stroke-linecap="round"></path></svg></button>
+    </div>
+    <div id="rev-vol-wrap">
+      <svg id="rev-vol-icon" width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <path d="M3 9v6h4l5 5V4L7 9H3z" fill="rgba(255,255,255,0.70)"></path>
+        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" fill="rgba(255,255,255,0.70)"></path>
+        <path d="M19.5 12c0 3.04-1.73 5.68-4.25 7.03l-.75-1.3A7 7 0 0 0 18 12a7 7 0 0 0-3.5-6.06l.74-1.3C17.77 6.32 19.5 8.96 19.5 12z" fill="rgba(255,255,255,0.40)"></path>
+      </svg>
+      <input type="range" id="rev-vol" min="0.0" max="1.0" step="0.05" value="0.8">
+    </div>
+  </div>
+  <div id="rev-spacer-bottom"></div>
+  <div id="rev-hint">Tap waveform to jump.<br>Drag anywhere to scrub.<br>Press [ENTER] to close.</div>
+</div>
+
+<!-- Debug panel — surfaced via #debug URL fragment. Inline HTML + inline
+     script so it works even if any external script fails. Use case:
+     "the app crashes when I try to open Settings, so I can't see the
+     diag log to figure out why." Open https://…/practice/#debug and
+     this panel renders the log directly, with Copy and Reset buttons. -->
+<div id="debug-panel" style="display:none; position:fixed; inset:0; background:#0d0d0d; color:#ccc; z-index:99999; padding:env(safe-area-inset-top,16px) 16px env(safe-area-inset-bottom,16px) 16px; overflow-y:auto; font-family:'Inconsolata', monospace;">
+  <h2 style="margin:0 0 12px 0; font-size:18px;">Debug Log</h2>
+  <div id="debug-panel-status" style="font-size:11px; color:#888; margin-bottom:8px;"></div>
+  <pre id="debug-panel-log" style="white-space:pre-wrap; word-break:break-word; font-size:11px; line-height:1.5; padding:8px; background:rgba(255,255,255,0.05); border-radius:4px; margin:0 0 12px 0;">(empty)</pre>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <button id="debug-panel-copy"  style="flex:1; min-width:120px; padding:10px; font-size:14px; border:1px solid #444; background:#1a1a1a; color:#ccc; border-radius:6px;">Copy log</button>
+    <button id="debug-panel-clear" style="flex:1; min-width:120px; padding:10px; font-size:14px; border:1px solid #444; background:#1a1a1a; color:#ccc; border-radius:6px;">Clear log</button>
+    <button id="debug-panel-close" style="flex:1; min-width:120px; padding:10px; font-size:14px; border:1px solid #444; background:#1a1a1a; color:#ccc; border-radius:6px;">Close</button>
+  </div>
+  <h3 style="margin:18px 0 8px 0; font-size:14px; color:#fcc;">Crash-recovery testing</h3>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <button id="debug-panel-sim-crash" style="flex:1; min-width:160px; padding:10px; font-size:13px; border:1px solid #886030; background:#2a1f10; color:#fc8; border-radius:6px;">Simulate crash + reload</button>
+    <button id="debug-panel-zero-counter" style="flex:1; min-width:160px; padding:10px; font-size:13px; border:1px solid #444; background:#1a1a1a; color:#ccc; border-radius:6px;">Reset boot counter</button>
+    <button id="debug-panel-reset" style="flex:1; min-width:160px; padding:10px; font-size:13px; border:1px solid #803030; background:#3a1010; color:#fcc; border-radius:6px;">Reset app</button>
+  </div>
+  <p style="font-size:11px; color:#888; margin-top:14px; line-height:1.5;">
+    <strong>Simulate crash + reload</strong> tells the watchdog to treat this session as crashed (skip the clean-shutdown marker on pagehide). Press 3 times in a row to trigger automatic recovery.
+    <br><br>
+    <strong>Reset boot counter</strong> zeros the bad-boot count without recovery — useful if a real crash counted falsely.
+    <br><br>
+    <strong>Reset app</strong> unregisters the service worker and deletes all caches, then reloads. Use this if the app is stuck or behaving strangely.
+  </p>
+</div>
+<script>
+(function () {
+  // Toggle on #debug URL fragment. Doesn't depend on any other script —
+  // reads localStorage directly so it works even if diag-log.js failed
+  // to load. Always wired so the user can navigate to #debug at any time.
+  var panel = document.getElementById('debug-panel');
+  var pre   = document.getElementById('debug-panel-log');
+  if (!panel || !pre) return;
+
+  function renderLog() {
+    try {
+      var entries = JSON.parse(localStorage.getItem('mb-diag-log') || '[]');
+      if (entries.length === 0) { pre.textContent = '(empty)'; return; }
+      pre.textContent = entries.slice(-30).reverse().map(function (e) {
+        var t = new Date(e.t);
+        var hh = String(t.getHours()).padStart(2, '0');
+        var mm = String(t.getMinutes()).padStart(2, '0');
+        var ss = String(t.getSeconds()).padStart(2, '0');
+        return '[' + hh + ':' + mm + ':' + ss + '] ' + e.level + ': ' + e.msg;
+      }).join('\n\n');
+    } catch (e) {
+      pre.textContent = '(error reading log: ' + e + ')';
+    }
+  }
+
+  function renderStatus() {
+    var status = document.getElementById('debug-panel-status');
+    if (!status) return;
+    try {
+      var counter   = localStorage.getItem('mb-boot-attempts') || '0';
+      var clean     = localStorage.getItem('mb-clean-shutdown');
+      var cleanText = clean === '1' ? 'clean' : clean === '0' ? 'running/crashed' : '(none)';
+      status.textContent = 'boot-attempts: ' + counter + '  ·  shutdown-marker: ' + cleanText;
+    } catch (e) {
+      status.textContent = '(localStorage unavailable)';
+    }
+  }
+
+  function show() { panel.style.display = 'block'; renderLog(); renderStatus(); }
+  function hide() {
+    panel.style.display = 'none';
+    if (location.hash === '#debug') {
+      // Don't reload — just clear the fragment without re-triggering hashchange.
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }
+
+  if (location.hash === '#debug') show();
+  window.addEventListener('hashchange', function () {
+    if (location.hash === '#debug') show();
+  });
+
+  document.getElementById('debug-panel-close').addEventListener('click', hide);
+  document.getElementById('debug-panel-clear').addEventListener('click', function () {
+    try { localStorage.removeItem('mb-diag-log'); } catch (e) {}
+    renderLog();
+  });
+
+  document.getElementById('debug-panel-sim-crash').addEventListener('click', function () {
+    // Set the suppress flag so pagehide / visibility-hidden don't write
+    // mb-clean-shutdown = '1' on this reload. The next boot will see it
+    // still at '0' and treat it as a crash, incrementing the counter.
+    try { localStorage.setItem('mb-test-suppress-clean', '1'); } catch (e) {}
+    location.reload();
+  });
+
+  document.getElementById('debug-panel-zero-counter').addEventListener('click', function () {
+    try {
+      localStorage.setItem('mb-boot-attempts', '0');
+      localStorage.setItem('mb-clean-shutdown', '1');
+    } catch (e) {}
+    renderStatus();
+  });
+
+  document.getElementById('debug-panel-copy').addEventListener('click', function (ev) {
+    var btn = ev.currentTarget, orig = btn.textContent, text = pre.textContent || '';
+    var done = function () {
+      btn.textContent = 'Copied!';
+      setTimeout(function () { btn.textContent = orig; }, 1500);
+    };
+    var fail = function () {
+      btn.textContent = 'Copy failed';
+      setTimeout(function () { btn.textContent = orig; }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () {
+        // Fallback: invisible textarea + execCommand.
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          done();
+        } catch (e) { fail(); }
+      });
+    } else { fail(); }
+  });
+
+  document.getElementById('debug-panel-reset').addEventListener('click', async function (ev) {
+    var btn = ev.currentTarget, orig = btn.textContent;
+    btn.textContent = 'Resetting…';
+    btn.disabled = true;
+    try {
+      if ('serviceWorker' in navigator) {
+        var regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(function (r) { return r.unregister(); }));
+      }
+      if ('caches' in window) {
+        var keys = await caches.keys();
+        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      }
+      try { localStorage.setItem('mb-boot-attempts', '0'); } catch (e) {}
+      // Clear the hash so the reload doesn't immediately re-show the panel.
+      location.hash = '';
+      location.reload();
+    } catch (e) {
+      btn.textContent = 'Failed: ' + (e.message || e);
+      btn.disabled = false;
+      setTimeout(function () { btn.textContent = orig; }, 3000);
+    }
+  });
+})();
+</script>
+
+<script src="js/diag-log.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/audio-ctx.js"></script>
+<script src="js/chime-success.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/mic.js"></script>
+<!-- vosk-browser.js (5.5 MB UMD) is lazy-loaded by voice.js's loadVoskScript()
+     on first opt-in (Get Started, or toggling voice on). Eager-loading on
+     boot used to crash the iPhone PWA before the welcome overlay rendered. -->
+<script src="js/voice-commands.js"></script>
+<script src="js/voice.js"></script>
+<script src="js/timer.js"></script>
+<script src="js/render.js"></script>
+<script src="js/safe-area.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/rep-counter.js"></script>
+<script src="js/boot.js"></script>
+</body>
+</html>

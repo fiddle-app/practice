@@ -1,0 +1,10 @@
+/* ============================================================
+   APP-SPECIFIC TOKENS — microbreaker
+   Add colors here that are not (yet) shared across apps.
+   Flag candidates for promotion in code/design reviews.
+   This file is NOT overwritten by sync-shared.sh.
+   ============================================================ */
+
+:root {
+  /* (none currently) */
+}

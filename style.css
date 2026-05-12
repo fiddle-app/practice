@@ -1,0 +1,905 @@
+:root {
+  --safe-top: env(safe-area-inset-top, 44px);
+  --safe-bot: env(safe-area-inset-bottom, 20px);
+  --safe-l:   env(safe-area-inset-left,  0px);
+  --safe-r:   env(safe-area-inset-right, 0px);
+}
+*, *::before, *::after {
+  box-sizing: border-box; margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  caret-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Restore caret + text selection only for elements where typing is the point. */
+input[type="text"], input[type="email"], input[type="number"],
+input[type="search"], input[type="password"], textarea, [contenteditable="true"] {
+  caret-color: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+/* ══ bg-fill for safe-area edges ══ */
+#bg-fill {
+  position: fixed; inset: 0; z-index: -1;
+  background-color: var(--color-bg-dark);
+}
+
+/* ══ App shell ══ */
+#app {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding-top: calc(var(--safe-top) + 10px);
+  padding-bottom: 42px;
+  padding-left: var(--safe-l); padding-right: var(--safe-r);
+  font-family: var(--font); color: #fff;
+  transition: background-color 0.65s ease;
+  background-color: var(--color-bg-surface);
+  overflow: hidden;
+}
+#app::after {
+  content: '';
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 25%, rgba(0,0,0,0.58) 100%);
+  z-index: 0;
+}
+#app > * { position: relative; z-index: 1; }
+
+/* ══ Top section ══ */
+#top-section {
+  width: 100%; display: flex; flex-direction: column;
+  align-items: center; padding: 0 22px; flex-shrink: 0;
+}
+#phase-label {
+  font-size: clamp(26px, 8vw, 36px); font-weight: 400; letter-spacing: 0.22em;
+  text-transform: uppercase; opacity: 0.52;
+  min-height: clamp(30px, 9vw, 42px); text-align: center;
+}
+/* Gap between phase label and progress bar */
+#label-gap { height: clamp(22px, 6vw, 30px); flex-shrink: 0; }
+#progress-section {
+  width: 100%; display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+  visibility: hidden;
+}
+#bar-stack {
+  width: 100%; display: flex; flex-direction: column; gap: 0;
+}
+#macro-bar-track {
+  position: relative;
+  width: 100%; height: 8px;
+  background: rgba(255,255,255,0.13); border-radius: 4px; overflow: hidden;
+}
+#macro-bar {
+  position: absolute; left: 0; top: 0;
+  height: 100%; background: rgba(255,255,255,0.72);
+  width: 0%; transition: width 0.35s linear;
+}
+#overage-bar-black,
+#overage-bar-yellow {
+  position: absolute; left: 0; top: 0;
+  height: 100%; width: 0%; transition: width 0.35s linear;
+}
+#overage-bar-black  { background: rgba(0,0,0,0.80); }
+#overage-bar-yellow { background: #eab308; }
+#time-progress {
+  font-size: clamp(14px, 3.8vw, 18px); font-weight: 300;
+  opacity: 0.55; letter-spacing: 0.04em; text-align: center;
+}
+#time-progress strong { font-weight: 600; opacity: 1; }
+#rest-report {
+  display: none;
+  font-size: clamp(14px, 3.8vw, 18px); font-weight: 300;
+  opacity: 0.55; letter-spacing: 0.04em; text-align: center; line-height: 1.7;
+}
+#chunk-summary {
+  display: none; text-align: center;
+  color: rgba(255,255,255,0.45); font-size: clamp(14px, 4vw, 18px);
+  font-weight: 300; line-height: 1.6; margin-top: 8px;
+}
+#chunk-summary strong { color: rgba(255,255,255,0.70); }
+
+/* ══ Middle section ══ */
+#mid-section {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; width: 100%;
+  gap: 0; padding: 0 22px; min-height: 0;
+  overflow: hidden;
+}
+
+/* Mid-zone: between progress and ring — content sits in lower half */
+#mid-zone {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end;
+  flex: 1; min-height: 0; width: 100%;
+  padding-bottom: 12px;
+}
+
+/* Rest questions */
+#rest-questions {
+  display: none; flex-direction: column;
+  align-items: center; gap: 7px;
+}
+#rest-questions p {
+  font-size: clamp(16px, 4.5vw, 22px); font-weight: 300; color: var(--color-warm-text);
+  text-align: center; letter-spacing: 0.02em; line-height: 1.45;
+}
+
+/* Round counter */
+#round-counter {
+  font-size: clamp(18px, 5.5vw, 26px); font-weight: 400; opacity: 0.75;
+  letter-spacing: 0.04em; text-align: center; line-height: 1.25;
+}
+
+/* Ring */
+#ring-wrap {
+  position: relative;
+  width: min(256px, 63vw); height: min(256px, 63vw); flex-shrink: 0;
+}
+/* Soft-dome face behind the timer ring — see _shared/design/soft-dome.md.
+   Sized so the dome is *slightly larger* than the ring's outer edge
+   (ring outer at ~90% of wrap; dome at 92%). The SVG below uses
+   position:relative so it paints above this pseudo-element, leaving the
+   ring strokes themselves untouched — only the dome's color peeks out
+   around the ring. */
+#ring-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 50%),
+    rgba(255,255,255,0.05);
+  box-shadow: -3px 4px 8px rgba(0,0,0,0.30);
+  pointer-events: none;
+}
+#ring-wrap svg {
+  width: 100%; height: 100%; overflow: visible;
+  position: relative;  /* paint above ::before disc */
+}
+#ring-bg { fill: none; stroke: rgba(255,255,255,0.10); }
+#ring-fg { fill: none; stroke: rgba(255,255,255,0.82); stroke-linecap: round; }
+#ring-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+#time-display {
+  font-size: clamp(42px, 13vw, 60px); font-weight: 300;
+  letter-spacing: -0.02em; line-height: 1; display: none;
+}
+#ready-ring-text {
+  font-size: clamp(38px, 11vw, 54px); font-weight: 300;
+  letter-spacing: 0.03em; display: none;
+}
+
+/* Lower-zone: between ring and controls
+   message at top, review-btn centered in remaining space */
+#lower-zone {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start;
+  flex: 1; min-height: 0; width: 100%;
+  padding-top: 14px;
+  position: relative;
+}
+#review-slot-lower {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+#message {
+  font-family: 'Nunito', sans-serif;
+  font-size: clamp(16px, 4.5vw, 22px); font-weight: 300; letter-spacing: 0.06em;
+  text-align: center; line-height: 1.4;
+  color: var(--color-warm-text);
+  max-width: 320px;
+}
+
+/* ══ Bottom section ══ */
+#bottom-section {
+  width: 100%; display: flex; flex-direction: column;
+  align-items: center; gap: 0; padding: 0 22px; flex-shrink: 0;
+}
+
+/* Controls row */
+#controls {
+  display: flex; align-items: center; justify-content: center;
+  gap: 28px; padding: 0; min-height: 0;
+  height: 84px;
+}
+.ctrl-btn {
+  background: none; border: none; color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.88; transition: opacity 0.12s, transform 0.1s;
+  -webkit-appearance: none; padding: 8px; outline: none;
+}
+.ctrl-btn:active { opacity: 0.4; transform: scale(0.90); }
+#btn-play-pause { width: 68px; height: 68px; }
+#btn-prev, #btn-next { width: 48px; height: 48px; opacity: 0.70; }
+
+/* Start button — soft dome (see _shared/design/soft-dome.md) */
+#start-btn {
+  display: none; height: 84px;
+  align-items: center; justify-content: center;
+}
+#start-btn-inner {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 50%),
+    rgba(255,255,255,0.11);
+  border: 1.5px solid transparent;
+  box-shadow: -3px 4px 8px rgba(0,0,0,0.30);
+  border-radius: 999px; color: #fff; font-family: var(--font);
+  font-size: clamp(17px, 5vw, 22px); font-weight: 500; letter-spacing: 0.10em;
+  padding: clamp(11px, 3vw, 16px) clamp(20px, 5vw, 28px);
+  cursor: pointer; -webkit-appearance: none;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+#start-btn-inner:active {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 50%),
+    rgba(255,255,255,0.22);
+  transform: scale(0.97);
+}
+
+/* Review button — waveform pill, soft dome */
+#review-btn {
+  display: none;
+  align-items: center;
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0) 50%),
+    rgba(255,255,255,0.09);
+  border: 2px solid transparent;
+  box-shadow: -3px 4px 8px rgba(0,0,0,0.30);
+  border-radius: 999px;
+  cursor: pointer; padding: 10px 20px;
+  transition: background 0.16s, box-shadow 0.16s;
+  -webkit-appearance: none; gap: 0;
+}
+#review-btn:active {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 50%),
+    rgba(255,255,255,0.22);
+}
+
+#bottom-spacer { height: 0; flex-shrink: 0; }
+
+/* ══════════════════════════════════════
+   REPETITION COUNTER
+══════════════════════════════════════ */
+/* Toggle icon — lives in the center of #lower-zone, exactly where the panel
+   will appear. When the panel opens, the icon slides leftward to make room
+   for it; the color fades gray→green in step with the slide. */
+#rc-toggle-btn {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: none; border: none;
+  color: rgba(255,255,255,0.36);
+  cursor: pointer; padding: 8px;
+  -webkit-appearance: none;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 6;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.40s ease,
+              opacity 0.18s;
+}
+#rc-toggle-btn[hidden] { display: none; }
+#rc-toggle-btn:active { color: rgba(255,255,255,0.72); scale: 0.92; }
+#rc-toggle-btn.expanded {
+  transform: translate(calc(-50% - 158px), -50%);
+  color: var(--color-green-light);
+}
+
+/* Hide fixed corner buttons (rep-counter toggle + close/info/settings) whenever
+   any modal overlay is open. They sit at z-index 250 — above the overlays at
+   z-index 200 — so without this they remain clickable on top of the panel,
+   triggering background actions the user can't see. */
+body:is(:has(#info-overlay.open), :has(#settings-overlay.open), :has(#review-overlay.open), :has(#welcome-overlay.open), :has(#hello-overlay.open))
+  :is(#rc-toggle-btn, #close-btn, #info-btn, #settings-btn) { display: none; }
+
+/* Expanded panel — absolutely positioned in #lower-zone, shifted slightly
+   right of dead-center so the icon-plus-panel pair reads as centered as a
+   group (the icon takes up the space on the left). */
+#rep-counter-panel {
+  position: absolute;
+  top: 50%; left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 14px;
+  transform-origin: center;
+  transform: translate(calc(-50% + 32px), -50%) scaleY(0.04);
+  opacity: 0;
+  transition: opacity 0.18s ease,
+              transform 0.20s cubic-bezier(0.34, 1.28, 0.64, 1);
+  pointer-events: none;
+  flex-shrink: 0;
+  z-index: 5;
+  user-select: none;
+  -webkit-user-select: none;
+  caret-color: transparent;
+}
+#rep-counter-panel[hidden] { display: none; }
+#rep-counter-panel.open {
+  opacity: 1;
+  transform: translate(calc(-50% + 32px), -50%) scaleY(1);
+  pointer-events: auto;
+}
+
+.rc-stepper {
+  display: flex; flex-direction: column; gap: 6px;
+  flex-shrink: 0;
+}
+.rc-step {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(0,0,0,0.22);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.75);
+  font-family: var(--font);
+  font-size: 17px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-appearance: none; padding: 0 0 2px;
+  transition: background 0.12s, opacity 0.12s;
+  user-select: none;
+  -webkit-user-select: none;
+  caret-color: transparent;
+  outline: none;
+}
+.rc-step:active { background: rgba(0,0,0,0.40); }
+.rc-step:disabled { opacity: 0.35; cursor: default; }
+
+/* Central tap area — always sized for two rows of dots, so taps above
+   or below an under-filled row still register as a success.
+   The empty cells in row 2 (when target ≤ 5) sit invisibly inside this
+   area; clicks anywhere here bubble to the panel-level handler. */
+#rc-circles {
+  display: grid;
+  grid-template-columns: repeat(5, 28px);
+  grid-template-rows: 28px 28px;
+  gap: 8px 10px;
+  justify-content: center;
+  align-content: center;
+  cursor: pointer;
+}
+.rc-dot {
+  width: 28px; height: 28px;
+  background: none; border: none; padding: 0;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-appearance: none;
+}
+.rc-dot svg { display: block; }
+/* Rep-counter glyph discs use the shared .prog-circle classes from
+   glyph-disc.css (see _shared/design/glyph-disc.css and soft-dome.md).
+   Only this app's size variant for the larger clear-all X stays local: */
+#rc-clear .prog-circle { width: 34px; height: 34px; }
+
+#rc-clear {
+  background: none; border: none; padding: 4px;
+  cursor: pointer; -webkit-appearance: none;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.1s;
+}
+#rc-clear:active { transform: scale(0.90); }
+
+/* Celebration message — sits just below the rep-counter panel.
+   Lives outside #app so it isn't clipped by #mid-section's overflow:hidden
+   and renders above #bottom-section regardless of layout compression.
+   Position (top/left) is set in JS, anchored to the live panel rect.
+   Color and weight mirror ear-tuner's "Correct" status-msg success state. */
+#rc-congrats {
+  position: fixed;
+  top: 0; left: 0;
+  font-family: var(--font);
+  font-size: clamp(14px, 3.8vw, 17px);
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  color: #a0f0a0;
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.30s ease;
+  z-index: 250;
+  user-select: none;
+  -webkit-user-select: none;
+  caret-color: transparent;
+}
+#rc-congrats.visible { opacity: 1; }
+
+/* ══ Close button (fixed, lower left) ══ */
+#close-btn {
+  position: fixed;
+  bottom: 0; right: calc(var(--safe-r) + 18px);
+  background: none; border: none; color: rgba(255,255,255,0.36);
+  cursor: pointer; padding: 8px; z-index: 250; -webkit-appearance: none;
+  transition: color 0.15s, opacity 0.2s;
+}
+#close-btn:active { color: rgba(255,255,255,0.72); }
+
+/* ══ Info button (fixed, lower left — same slot as close) ══ */
+#info-btn {
+  position: fixed;
+  bottom: 0; right: calc(var(--safe-r) + 18px);
+  background: none; border: none; color: rgba(255,255,255,0.36);
+  cursor: pointer; padding: 8px; z-index: 250; -webkit-appearance: none;
+  transition: color 0.15s, opacity 0.2s;
+}
+#info-btn:active { color: rgba(255,255,255,0.65); }
+
+/* ══ Settings gear (fixed, lower right) ══ */
+#settings-btn {
+  position: fixed;
+  bottom: 0; left: calc(var(--safe-l) + 18px);
+  background: none; border: none; color: rgba(255,255,255,0.36);
+  cursor: pointer; padding: 8px; z-index: 250; -webkit-appearance: none;
+  transition: color 0.15s;
+}
+#settings-btn:active { color: rgba(255,255,255,0.82); }
+
+/* ══════════════════════════════════════
+   SETTINGS PANEL
+══════════════════════════════════════ */
+#settings-overlay {
+  display: none; position: fixed; inset: 0;
+  background: var(--color-bg-panel);
+  z-index: 200; flex-direction: column;
+  font-family: var(--font); color: #fff;
+}
+#settings-overlay.open { display: flex; }
+
+#s-done-btn {
+  position: fixed; top: calc(var(--safe-top) + 8px); right: calc(var(--safe-r) + 10px);
+  background: none; border: none; border-radius: 999px;
+  color: var(--color-green-light, #4d9966);
+  cursor: pointer; padding: 6px;
+  z-index: 210; -webkit-appearance: none;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+#s-done-btn:hover  { background: rgba(77, 153, 102, 0.18); color: #7dbf95; }
+#s-done-btn:active { background: rgba(77, 153, 102, 0.30); }
+#s-done-btn svg { width: 36px; height: 36px; display: block; pointer-events: none; }
+
+/* Inner scroll container — overflow:auto here, not on the overlay itself */
+#settings-scroll {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: calc(var(--safe-top) + 58px) 0 calc(var(--safe-bot) + 24px);
+  display: flex; flex-direction: column; align-items: center;
+}
+#settings-inner {
+  width: 100%; max-width: 480px;
+  padding: 0 58px 0 24px;
+  display: flex; flex-direction: column;
+}
+.s-title-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.s-title { font-size: clamp(19px, 5.5vw, 25px); font-weight: 600; letter-spacing: 0.04em; }
+
+.log-action-btn {
+-webkit-appearance: none; font-family: var(--font);
+font-size: clamp(12px, 3vw, 14px);
+width: auto; padding: 0 14px; height: 36px;
+border-radius: 6px;
+background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25);
+color: #fff; cursor: pointer;
+display: flex; align-items: center; justify-content: center;
+transition: background 0.12s, color 0.12s;
+}
+.log-action-btn:active { background: rgba(255,255,255,0.28); }
+.s-sec { font-size: clamp(11px, 3vw, 14px); letter-spacing: 0.2em; text-transform: uppercase;
+  color: rgba(255,255,255,0.38); margin: 20px 0 8px; }
+.s-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; gap: 12px;
+}
+.s-label { font-size: clamp(15px, 4.2vw, 19px); font-weight: 300; }
+.s-sub { font-size: clamp(12px, 3.2vw, 15px); color: rgba(255,255,255,0.42); margin-top: 2px; }
+.s-stepper { display: flex; align-items: center; gap: 10px; }
+.step-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25);
+  color: #fff; font-size: 22px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-appearance: none; transition: background 0.12s;
+  font-family: var(--font); padding-bottom: 2px;
+}
+.step-btn:active { background: rgba(255,255,255,0.28); }
+.s-val { font-size: clamp(14px, 3.8vw, 17px); font-weight: 400; min-width: 50px; text-align: center; color: rgba(255,255,255,0.85); }
+.tog-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; }
+.tog-label { font-size: clamp(15px, 4.2vw, 19px); font-weight: 300; }
+.tog-sw { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.tog-sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+.tog-track {
+  width: 50px; height: 28px; border-radius: 14px;
+  background: rgba(255,255,255,0.18); transition: background 0.2s;
+}
+.tog-sw input:checked ~ .tog-track { background: var(--color-green); }
+.tog-thumb {
+  position: absolute; left: 3px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; transition: transform 0.2s; pointer-events: none;
+}
+.tog-sw input:checked ~ .tog-thumb { transform: translateX(22px); }
+.msg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.msg-inp {
+  flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 7px; color: #fff; font-family: var(--font);
+  font-size: clamp(14px, 3.8vw, 17px); padding: 9px 12px; -webkit-appearance: none;
+}
+.msg-inp:focus { border-color: rgba(255,255,255,0.38); outline: none; }
+.msg-del { background: none; border: none; color: rgba(255,255,255,0.32);
+  font-size: clamp(18px, 5vw, 24px); cursor: pointer; padding: 4px; line-height: 1; }
+#add-msg-btn, .add-list-btn {
+  -webkit-appearance: none; font-family: var(--font); cursor: pointer;
+  border-radius: 999px; font-size: clamp(15px, 4.2vw, 19px); padding: 11px 22px; border: none;
+  transition: opacity 0.15s; letter-spacing: 0.04em;
+  background: rgba(255,255,255,0.10); color: #fff; margin-top: 10px;
+}
+#add-msg-btn:active, .add-list-btn:active { opacity: 0.7; }
+#s-reset-btn { background: none; border: none; color: rgba(255,255,255,0.35);
+  font-family: var(--font); font-size: clamp(14px, 3.8vw, 17px);
+  letter-spacing: 0.04em; cursor: pointer; margin-top: 28px; padding: 6px 0;
+  text-decoration: underline; text-underline-offset: 3px; -webkit-appearance: none; }
+#s-reset-btn:active { color: rgba(255,255,255,0.65); }
+
+/* Reset dialog */
+#reset-overlay {
+  display: none; position: fixed; inset: 0; z-index: 400;
+  background: rgba(0,0,0,0.75); align-items: center; justify-content: center;
+}
+#reset-overlay.open { display: flex; }
+#reset-box {
+  background: #2a2a2a; border-radius: 16px; /* slightly lighter than --color-bg-panel, intentional */
+  padding: 28px 24px; max-width: 320px; width: 90%;
+  font-family: var(--font); color: #fff;
+}
+#reset-title { font-size: clamp(17px, 5vw, 22px); font-weight: 600; margin-bottom: 10px; }
+#reset-msg   { font-size: clamp(14px, 4vw, 17px); font-weight: 300; color: rgba(255,255,255,0.72); margin-bottom: 22px; line-height: 1.5; }
+#reset-btns  { display: flex; flex-direction: column; gap: 10px; }
+#reset-btns button {
+  -webkit-appearance: none; font-family: var(--font); cursor: pointer;
+  border-radius: 999px; font-size: clamp(14px, 4vw, 17px); padding: 12px;
+  border: none; transition: opacity 0.15s; letter-spacing: 0.04em;
+}
+#reset-yes    { background: #c0392b; color: #fff; }
+#reset-no     { background: rgba(255,255,255,0.14); color: #fff; }
+#reset-cancel { background: none; color: rgba(255,255,255,0.50); text-decoration: underline; }
+
+/* ══════════════════════════════════════
+   REVIEW OVERLAY
+══════════════════════════════════════ */
+#review-overlay {
+  display: none; position: fixed; inset: 0;
+  background: var(--color-green);
+  z-index: 300; flex-direction: column; align-items: center;
+  justify-content: flex-start;
+  padding: calc(var(--safe-top) + 10px) 0 calc(var(--safe-bot) + 16px);
+  gap: 16px; font-family: var(--font); color: #fff;
+}
+#review-overlay::after {
+  content: '';
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 25%, rgba(0,0,0,0.60) 100%);
+  z-index: 0;
+}
+#review-overlay > * { position: relative; z-index: 1; }
+#review-overlay.open { display: flex; }
+
+#rev-title {
+  font-size: clamp(26px, 8vw, 36px); font-weight: 400; letter-spacing: 0.22em;
+  text-transform: uppercase; opacity: 0.52;
+  padding: 0 28px;
+}
+#rev-spacer-top { flex: 1; }
+#rev-times {
+  font-size: clamp(36px, 11vw, 54px); font-weight: 300;
+  letter-spacing: -0.02em; line-height: 1;
+  padding: 0 28px;
+}
+#rev-sep { opacity: 0.35; }
+#rev-dur { opacity: 0.45; }
+
+/* Waveform — full width, twice the v15 height */
+#rev-wave {
+  width: 100%; height: 144px;
+  background: rgba(255,255,255,0.06); overflow: hidden; position: relative;
+  cursor: pointer; flex-shrink: 0;
+}
+#rev-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+#rev-prog {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: rgba(255,255,255,0.18); width: 0%;
+  mix-blend-mode: screen;
+  transition: width 0.08s linear;
+}
+
+#rev-controls {
+  display: flex; align-items: center; justify-content: center;
+  gap: 11px;
+}
+/* All review-screen player buttons use soft dome (see _shared/design/soft-dome.md).
+   Variants below override only size or colored fill — they preserve the
+   gradient highlight and drop shadow layered in this base rule. */
+.rev-btn {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 50%),
+    rgba(255,255,255,0.10);
+  border: 1.5px solid transparent;
+  box-shadow: -3px 4px 8px rgba(0,0,0,0.30);
+  border-radius: 50%; color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-appearance: none; transition: background 0.12s, transform 0.1s, box-shadow 0.12s;
+  outline: none;
+}
+.rev-btn:active {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 50%),
+    rgba(255,255,255,0.28);
+  transform: scale(0.90);
+}
+.rev-lg { width: 78px; height: 78px; }
+.rev-sm { width: 60px; height: 60px; }
+.rev-exit-btn {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 50%),
+    rgba(200,40,40,0.10);
+}
+.rev-exit-btn:active {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 50%),
+    rgba(200,40,40,0.25);
+}
+
+#rev-hint {
+  font-size: clamp(12px, 3.2vw, 16px); font-weight: 300;
+  color: rgba(255,255,255,0.40); text-align: center; line-height: 1.6;
+  padding: 0 28px clamp(12px, 3.2vw, 20px);
+  flex-shrink: 0;
+}
+/* Review controls group wrapper — aligns vol slider with buttons */
+#rev-bottom-group {
+  display: inline-flex; flex-direction: column; align-items: stretch;
+  gap: 10px; flex-shrink: 0;
+}
+/* Review volume slider */
+#rev-vol-wrap {
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+.is-safari #rev-vol-wrap { display: none; }
+#rev-vol-icon { opacity: 0.50; flex-shrink: 0; }
+#rev-vol {
+  -webkit-appearance: none; appearance: none;
+  flex: 1; height: 3px; border-radius: 2px;
+  background: rgba(255,255,255,0.25); outline: none; cursor: pointer;
+}
+#rev-vol::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; cursor: pointer;
+  box-shadow: 0 0 2px rgba(0,0,0,0.3);
+}
+#rev-vol::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; cursor: pointer; border: none;
+}
+/* Settings notification volume slider */
+#s-vol {
+  -webkit-appearance: none; appearance: none;
+  height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.20); outline: none; cursor: pointer;
+}
+#s-vol::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; cursor: pointer;
+  box-shadow: 0 0 3px rgba(0,0,0,0.4);
+}
+#s-vol::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; cursor: pointer; border: none;
+}
+#rev-spacer-bottom { flex: 1; }
+
+/* ══════════════════════════════════════
+   INFO OVERLAY
+══════════════════════════════════════ */
+#info-overlay {
+  display: none; position: fixed; inset: 0; z-index: 250;
+  background: var(--color-parchment); color: #111; font-family: var(--font);
+  padding: calc(var(--safe-top) + 8px) 24px calc(var(--safe-bot) + 24px);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  flex-direction: column;
+  background-image: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.10) 100%);
+}
+#info-overlay.open { display: flex; }
+#info-close-btn, #info-close-btn-bottom {
+  align-self: flex-end; background: none; border: none; color: rgba(0,0,0,0.45);
+  cursor: pointer; padding: 4px;
+  -webkit-appearance: none; transition: color 0.15s; flex-shrink: 0;
+}
+#info-close-btn:active, #info-close-btn-bottom:active { color: #000; }
+#info-close-btn { margin-bottom: 4px; }
+#info-close-btn-bottom { margin-top: 8px; }
+#info-content { display: flex; flex-direction: column; gap: 18px; max-width: 600px; align-self: center; width: 100%; }
+.info-p { font-family: var(--font-info); font-size: var(--font-info-body); font-weight: 300; color: rgba(0,0,0,0.70); line-height: 1.65; margin: 0; }
+.info-p strong { font-weight: 600; }
+.info-p a { color: var(--color-orange-2); text-decoration: underline; text-underline-offset: 3px; }
+.info-sec { font-family: var(--font-info); font-size: var(--font-info-subheading); letter-spacing: 0.2em; text-transform: uppercase; color: rgba(0,0,0,0.38); margin-top: 4px; }
+/* App-name heading + tagline shown at the top of welcome / info overlays */
+.info-heading { font-family: var(--font-info); font-size: var(--font-info-heading); font-weight: 600; letter-spacing: 0.04em; color: #1a1008; }
+.info-subheading { font-family: var(--font-info); font-size: var(--font-info-subheading); color: rgba(0,0,0,0.40); letter-spacing: 0.06em; margin-top: 2px; }
+hr.info-divider { border: none; border-top: 1px solid rgba(0,0,0,0.12); margin: 0; }
+
+/* Welcome overlay */
+#welcome-overlay {
+background: var(--color-parchment); color: #111; font-family: var(--font);
+overflow-y: auto; -webkit-overflow-scrolling: touch;
+padding: calc(var(--safe-top) + 8px) 24px calc(var(--safe-bot) + 68px);
+background-image: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.10) 100%);
+display: none; position: fixed; inset: 0; z-index: 190;
+flex-direction: column; align-items: center;
+}
+#welcome-overlay.open { display: flex; }
+/* Corner buttons appear over welcome — shift to dark theme */
+body:has(#welcome-overlay.open) #info-btn,
+body:has(#welcome-overlay.open) #settings-btn { color: rgba(0,0,0,0.35); }
+body:has(#welcome-overlay.open) #info-btn:active,
+body:has(#welcome-overlay.open) #settings-btn:active { color: rgba(0,0,0,0.75); }
+#welcome-content {
+display: flex; flex-direction: column; gap: 18px; max-width: 600px; width: 100%;
+flex-grow: 1;
+}
+.welcome-push { flex: 1; min-height: 0; }
+/* Daily-launch buttons — used by both Welcome and Hello.
+   Primary = "Start with voice recognition" (orange pill).
+   Secondary = "No thanks, I'll use the buttons" (muted outlined pill). */
+.launch-buttons {
+display: flex; flex-direction: column; gap: 12px; align-items: stretch;
+width: 100%; max-width: 360px; align-self: center;
+}
+.launch-btn-primary, .launch-btn-secondary {
+-webkit-appearance: none; font-family: var(--font);
+font-size: clamp(15px,4.5vw,19px); font-weight: 600; letter-spacing: 0.04em;
+border: none; border-radius: 999px;
+padding: 14px 24px; cursor: pointer;
+transition: background 0.15s;
+}
+.launch-btn-primary { background: var(--color-orange); color: #fff; }
+.launch-btn-primary:active { background: var(--color-orange-dark); }
+.launch-btn-secondary {
+background: rgba(0,0,0,0.06); color: rgba(0,0,0,0.72);
+border: 1px solid rgba(0,0,0,0.22);
+}
+.launch-btn-secondary:active { background: rgba(0,0,0,0.14); }
+/* Tiny build-date footer at the bottom of Welcome / Hello — debug aid
+   for verifying which build the home-screen-icon is actually running. */
+.launch-build-date {
+text-align: center;
+font-size: 11px;
+font-family: 'Inconsolata', monospace;
+color: rgba(0, 0, 0, 0.45);
+margin-top: 6px;
+}
+.welcome-inline-btn {
+display: inline-flex; align-items: center;
+-webkit-appearance: none; background: none; border: none;
+color: rgba(0,0,0,0.55); cursor: pointer; font-family: inherit;
+font-size: inherit; vertical-align: middle; padding: 0 1px;
+line-height: 1;
+}
+.welcome-inline-btn:active { color: #000; }
+/* Resume screen — modal dialog floating over whatever screen the user
+   was on when they backgrounded. Says explicitly that Apple requires a
+   fresh gesture to restart the mic; tapping Resume is that gesture. */
+#resume-overlay {
+display: none; position: fixed; inset: 0; z-index: 220;
+background: rgba(0,0,0,0.55);
+align-items: center; justify-content: center;
+padding: 16px;
+}
+#resume-overlay.open { display: flex; }
+#resume-box {
+background: var(--color-bg-panel); color: rgba(255,255,255,0.92);
+border-radius: 14px; padding: 24px;
+max-width: 360px; width: 100%;
+display: flex; flex-direction: column; gap: 14px; align-items: stretch;
+font-family: var(--font);
+box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+}
+#resume-title {
+font-size: clamp(18px, 5vw, 22px); font-weight: 600; text-align: center;
+letter-spacing: 0.02em;
+}
+#resume-msg {
+font-size: clamp(13px, 3.5vw, 15px); line-height: 1.5; margin: 0;
+color: rgba(255,255,255,0.82); text-align: center;
+}
+#resume-btn-action {
+-webkit-appearance: none; font-family: var(--font);
+font-size: clamp(15px, 4.5vw, 17px); font-weight: 600;
+background: var(--color-orange); color: #fff;
+border: none; border-radius: 999px;
+padding: 12px 28px; cursor: pointer; align-self: center; min-width: 160px;
+transition: background 0.15s;
+}
+#resume-btn-action:active { background: var(--color-orange-dark); }
+/* Hello overlay — shares Welcome's parchment background but is shorter
+   (vertically centered, no long onboarding text). Daily entry gate. */
+#hello-overlay {
+background: var(--color-parchment); color: #111; font-family: var(--font);
+overflow-y: auto; -webkit-overflow-scrolling: touch;
+padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bot) + 68px);
+background-image: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.10) 100%);
+display: none; position: fixed; inset: 0; z-index: 190;
+flex-direction: column; align-items: center; justify-content: center;
+}
+#hello-overlay.open { display: flex; }
+body:has(#hello-overlay.open) #info-btn,
+body:has(#hello-overlay.open) #settings-btn { color: rgba(0,0,0,0.35); }
+body:has(#hello-overlay.open) #info-btn:active,
+body:has(#hello-overlay.open) #settings-btn:active { color: rgba(0,0,0,0.75); }
+#hello-content {
+display: flex; flex-direction: column; gap: 22px; max-width: 600px; width: 100%;
+flex-grow: 1; justify-content: center;
+}
+
+/* ══ Voice-commands transcript echo ══
+   Bottom-center, vertically center-aligned with #settings-btn (lower-left)
+   and #info-btn (lower-right). Same `bottom: 0` + 8px padding as those
+   buttons; flex centers the text inside an icon-height band. Auto-clears
+   after 2s unless settings.vcKeepLastWord is on (then finals persist). */
+#vc-transcript {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 38px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  font-family: 'Nunito', sans-serif;
+  font-size: clamp(13px, 3.5vw, 15px);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  z-index: 240;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#vc-transcript.visible { opacity: 1; }
+
+/* ══ Voice-model loader overlay ══ */
+/* Indeterminate "Loading voice assets…" overlay shown while Vosk's worker
+   fetches + extracts the model. No progress bar or cancel button — Vosk
+   owns the load, we don't have percentage data yet, and per-cache-lifetime
+   cancel is not a useful affordance. */
+#vc-loader {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.66);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+  font-family: var(--font);
+}
+#vc-loader[hidden] { display: none !important; }
+#vc-loader-box {
+  background: #1a1a1a; padding: 24px 22px 18px; border-radius: 14px;
+  width: min(82vw, 360px); color: #fff;
+  display: flex; flex-direction: column; gap: 10px; text-align: center;
+}
+#vc-loader-title  { font-size: 16px; letter-spacing: 0.06em; opacity: 0.9; }
+#vc-loader-status { font-size: 12px; opacity: 0.55; letter-spacing: 0.05em; }

@@ -43,20 +43,28 @@ async function acquireMic() {
   _micAcquireP = (async () => {
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      console.log('[mic] acquired tracks=' + micStream.getAudioTracks().length +
+      const tracks = micStream.getAudioTracks();
+      console.log('[mic] acquired tracks=' + tracks.length +
                   ' visible=' + (document.visibilityState === 'visible'));
-      // Surface iOS track-ended events — these fire when the OS yanks the audio
-      // source mid-session (long background, audio-session interrupt, hardware
-      // hand-off). Without this listener the track silently dies and the next
-      // micStreamIsLive() probe is the only signal. Logging here lets the
-      // diag-log show the precise moment iOS invalidated the stream, which is
-      // critical for the beep-storm investigation.
-      micStream.getAudioTracks().forEach((t, i) => {
-        t.addEventListener('ended', () => {
-          console.log('[mic] track ' + i + ' ended visible=' + (document.visibilityState === 'visible'));
+      // Listen to tracks[0] only, NOT forEach. Rationale: the persistent-mute
+      // debounce timer (_micPersistentMuteTimer) is module-scoped — a multi-track
+      // listener model would race against it (track A mute → timer armed; track B
+      // unmute → timer cleared even though A is still muted). getUserMedia with
+      // { audio: true } returns exactly one audio track, so single-track is
+      // load-bearing. If we ever request constraints that could yield multiple
+      // audio tracks, key the timer by track index instead.
+      //
+      // ended fires when iOS yanks the source mid-session; mute/unmute fire
+      // when iOS suspends/resumes data flow (notably, the pre-lock cascade
+      // that fires 3 iOS microphone-indicator beeps — see persistent-mute
+      // auto-release below).
+      const track = tracks[0];
+      if (track) {
+        track.addEventListener('ended', () => {
+          console.log('[mic] track ended visible=' + (document.visibilityState === 'visible'));
         });
-        t.addEventListener('mute', () => {
-          console.log('[mic] track ' + i + ' mute visible=' + (document.visibilityState === 'visible'));
+        track.addEventListener('mute', () => {
+          console.log('[mic] track mute visible=' + (document.visibilityState === 'visible'));
           // Persistent-mute = pre-lock cascade. Arm release timer; cancel on unmute.
           if (_micPersistentMuteTimer) clearTimeout(_micPersistentMuteTimer);
           _micPersistentMuteTimer = setTimeout(() => {
@@ -65,15 +73,15 @@ async function acquireMic() {
             releaseMic();
           }, _MIC_PERSISTENT_MUTE_MS);
         });
-        t.addEventListener('unmute', () => {
-          console.log('[mic] track ' + i + ' unmute visible=' + (document.visibilityState === 'visible'));
+        track.addEventListener('unmute', () => {
+          console.log('[mic] track unmute visible=' + (document.visibilityState === 'visible'));
           if (_micPersistentMuteTimer) {
             clearTimeout(_micPersistentMuteTimer);
             _micPersistentMuteTimer = null;
             console.log('[mic] persistent-mute timer cancelled by unmute');
           }
         });
-      });
+      }
       // getUserMedia can suspend the AudioContext on iPad — resume it
       if (audioCtx && audioCtx.state === 'suspended') {
         await audioCtx.resume();

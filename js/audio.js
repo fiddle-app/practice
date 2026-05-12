@@ -16,8 +16,6 @@ function updateMasterGain() {
 function beep(freq, dur, gain, type, delay) {
   if (!audioUnlocked) return;
   if ((parseFloat(settings.notifyVol) || 0) === 0) return;
-  console.log('[chime] beep freq=' + freq + ' dur=' + dur + ' delay=' + (delay || 0) +
-              ' visible=' + (document.visibilityState === 'visible'));
   const ctx = audioCtx;
   const t = ctx.currentTime + (delay || 0);
   const g = ctx.createGain();
@@ -36,7 +34,6 @@ function beep(freq, dur, gain, type, delay) {
 function playCountdownBeep(n) { beep(n === 1 ? 1047 : 880, 0.40, 0.28); } // 880=A5, 1047=C6
 
 function playWorkStart() {
-  console.log('[chime] playWorkStart visible=' + (document.visibilityState === 'visible'));
   // Boxing ring bell: A5 (880Hz), single strike, 2.5s decay
   const freq = 880; // A5 (boxing bell fundamental)
   const dur  = 2.5;
@@ -59,25 +56,21 @@ function playWorkStart() {
 }
 
 function playBreakStart() {
-  console.log('[chime] playBreakStart');
   // Single C3 tone, fading out over 3s
   beep(130.8, 3.0, 0.35, 'sine', 0.0); // C3
 }
 
 function playAsleepDing() {
-  console.log('[chime] playAsleepDing');
   // Single quiet C5 ding — plays when autoAdvance=off and practice time exceeds chunk budget
   beep(523.3, 2.0, 0.25, 'sine', 0.0); // C5
 }
 
 function playFinalGong() {
-  console.log('[chime] playFinalGong');
   // Same as break chime (C3) but twice as long and 20% louder
   beep(130.8, 6.0, 0.42, 'sine', 0.0); // C3, 6s decay, gain 0.42
 }
 
 function playBackToWork() {
-  console.log('[chime] playBackToWork');
   // High chime: C4, 8.0s decay, gain 0.30
   beep(261.6, 3.0, 0.30, 'sine', 0.0); // C4
 }

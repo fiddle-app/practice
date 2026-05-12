@@ -39,11 +39,15 @@ async function ensureAudio() {
     console.log('[ctx] created gen=' + audioCtxGeneration + ' state=' + audioCtx.state);
     // Surface every AudioContext state transition (running/suspended/interrupted/closed).
     // iOS fires 'interrupted' on phone calls, screen lock, audio-session conflicts;
-    // those events are otherwise invisible and a prime suspect for the beep-storm
-    // investigation. The listener lives for the life of the ctx and is GC'd when
-    // nukeAudioCtx() closes it.
-    audioCtx.addEventListener('statechange', () => {
-      console.log('[ctx] statechange state=' + (audioCtx ? audioCtx.state : 'null'));
+    // those events are otherwise invisible. Capture ctx + generation in the closure
+    // so a late-firing statechange on an already-nuked context reports its OWN
+    // identity, not whatever the audioCtx global has been swapped to — crucial for
+    // diagnosing transitions that happen across a nukeAudioCtx() cycle. The
+    // listener is GC'd with the old context after old.close() in nukeAudioCtx.
+    const ctx = audioCtx;
+    const gen = audioCtxGeneration;
+    ctx.addEventListener('statechange', () => {
+      console.log('[ctx] statechange gen=' + gen + ' state=' + ctx.state);
     });
     masterGain = audioCtx.createGain();
     masterGain.gain.value = (parseFloat(settings.notifyVol) || 0.35) / 0.35;

@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-13 13:36 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-13 13:36">
+     with 2026-05-13 13:51 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-13 13:51">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -130,6 +130,26 @@
     if (reg) reg.update().catch(function () {});
   }).catch(function () {});
 
+  // Skip-once flag set by the upgrade-OK handler before its reload.
+  // The post-upgrade reload triggers an SW re-register (boot.js does
+  // it once caches are clean), and the freshly-registered SW fires
+  // controllerchange immediately as it claims the page — for content
+  // we're already running. Without this skip, the controllerchange
+  // listener queues a deferred reload that fires the moment Hello
+  // closes, looping the user back through Hello. Read AND CONSUME the
+  // flag here at script-load: keeps the in-memory copy live for the
+  // listener, but clears storage so a future session can't
+  // accidentally inherit it. (sessionStorage doesn't reliably clear
+  // on iOS PWA force-kill, so any "consume only when used" approach
+  // would risk a stale-flag dead end.)
+  var skipNextControllerChange = false;
+  try {
+    if (sessionStorage.getItem('mb-skip-next-cc') === '1') {
+      skipNextControllerChange = true;
+      sessionStorage.removeItem('mb-skip-next-cc');
+    }
+  } catch (e) {}
+
   // Safe to reload when the user isn't mid-interaction. Block overlays
   // are anything modal the user is actively engaging with (resume,
   // upgrade, reset confirmation, review). Otherwise gate on phase:
@@ -164,6 +184,10 @@
   }
 
   navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (skipNextControllerChange) {
+      skipNextControllerChange = false;
+      return;
+    }
     // Reload immediately if safe; else poll every 5s until safe.
     tryDeferredReload();
     if (pollInterval !== null) clearInterval(pollInterval);
@@ -177,7 +201,7 @@
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-13 13:36 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-13 13:51 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -349,6 +373,14 @@
     // defense-in-depth; the SW will serve fresh content on reload
     // regardless.
     try { localStorage.setItem('mb-last-build', up.to); } catch (e) {}
+    // Tell the next page-load's controllerchange listener to ignore the
+    // first event — boot.js re-registers the SW from scratch after our
+    // unregister, and the fresh SW fires controllerchange immediately
+    // for content we're already on. Without the skip, that triggers a
+    // deferred reload that fires the moment Hello closes, looping the
+    // user back through Hello. The flag is read AND consumed at the
+    // top of the listener script on next load.
+    try { sessionStorage.setItem('mb-skip-next-cc', '1'); } catch (e) {}
     var doReload = function () { window.location.replace(window.location.pathname); };
     // Cleanup chain, raced against a 3s timeout. Whichever completes
     // first triggers the reload.

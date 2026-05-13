@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-13 12:52 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-13 12:52">
+     with 2026-05-13 13:03 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-13 13:03">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -177,7 +177,7 @@
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-13 12:52 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-13 13:03 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -836,6 +836,7 @@
       <button class="launch-btn-primary" onclick="closeHello(true)">Start with voice recognition</button>
       <button class="launch-btn-secondary" onclick="closeHello(false)">No thanks, I'll use the buttons</button>
     </div>
+    <p class="info-p" style="font-size:0.85em;opacity:0.72;font-style:italic;margin-top:14px;">In a car (or wherever connected to Bluetooth audio) with voice control, sound will come through your phone. Without, it will come through the Bluetooth speakers. This is a limitation of web apps.</p>
     <div class="welcome-push"></div>
     <div class="launch-build-date" id="hello-build-date"></div>
   </div>

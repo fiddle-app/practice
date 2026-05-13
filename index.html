@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-13 13:51 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-13 13:51">
+     with 2026-05-13 13:55 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-13 13:55">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -201,7 +201,7 @@
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-13 13:51 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-13 13:55 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -719,7 +719,7 @@
   <div class="s-sec">Micro-break reminders</div>
   <div id="msg-list"></div>
   <button id="add-msg-btn">+ Add reminder</button>
-  <div class="s-sec">Voice Recognition</div>
+  <div class="s-sec">Voice Control</div>
   <div class="s-row" style="flex-direction:column; align-items:stretch; gap:14px; padding: 10px 0;">
     <div>
       <div class="s-label" style="margin-bottom:8px;">Words for &ldquo;correct&rdquo;</div>
@@ -793,7 +793,7 @@
 <div id="reset-overlay">
   <div id="reset-box">
     <div id="reset-title">Reset to defaults</div>
-    <div id="reset-msg">Also reset reminders and voice-recognition synonyms?</div>
+    <div id="reset-msg">Also reset reminders and voice-control synonyms?</div>
     <div id="reset-btns">
       <button id="reset-yes">Yes, reset everything</button>
       <button id="reset-no">No, keep my lists</button>
@@ -829,7 +829,7 @@
     <p class="info-p">Tap <button class="welcome-inline-btn" onclick="$('settings-overlay').classList.add('open');" aria-label="Settings"><svg width="20" height="20" aria-hidden="true"><use href="#icon-gear"/></svg></button> (lower left) to set timer durations and customize reminders.</p>
     <div class="welcome-push"></div>
     <div class="launch-buttons">
-      <button id="welcome-yes-voice" class="launch-btn-primary" onclick="closeWelcome(true)">Start with voice recognition</button>
+      <button id="welcome-yes-voice" class="launch-btn-primary" onclick="closeWelcome(true)">Start with voice control</button>
       <button id="welcome-no-voice" class="launch-btn-secondary" onclick="closeWelcome(false)">No thanks, I'll use the buttons</button>
     </div>
     <div class="welcome-push"></div>
@@ -859,13 +859,13 @@
         <div class="info-subheading">Ready to practice?</div>
       </div>
     </div>
-    <p class="info-p">Voice recognition allows you to control the app hands-free, but it does drain the battery faster.</p>
+    <p class="info-p">Voice control lets you operate the app hands-free, but it does drain the battery faster.</p>
     <p class="info-p">Voice commands include "start", "play", "pause", "done", and "ready".</p>
     <p class="info-p">Say "reps" to open/close the rep-counter and "good" or "wrong" after a good/bad rep (see settings to customize).</p>
     <p class="info-p">Say "review" to review your recording during micro-breaks... "re-play" to re-play it and "close" to exit the review. </p>
     <div class="welcome-push"></div>
     <div class="launch-buttons">
-      <button class="launch-btn-primary" onclick="closeHello(true)">Start with voice recognition</button>
+      <button class="launch-btn-primary" onclick="closeHello(true)">Start with voice control</button>
       <button class="launch-btn-secondary" onclick="closeHello(false)">No thanks, I'll use the buttons</button>
     </div>
     <p class="info-p" style="font-size:0.85em;opacity:0.72;font-style:italic;margin-top:14px;">In a car (or wherever connected to Bluetooth audio) with voice control, sound will come through your phone. Without, it will come through the Bluetooth speakers. This is a limitation of web apps.</p>

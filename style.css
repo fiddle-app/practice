@@ -800,15 +800,19 @@ line-height: 1;
 .welcome-inline-btn:active { color: #000; }
 /* Resume modal styles live in resume-modal.css (shared across the
    fiddle family — synced from _shared/design/). */
-/* Hello overlay — shares Welcome's parchment background but is shorter
-   (vertically centered, no long onboarding text). Daily entry gate. */
+/* Hello overlay — shares Welcome's parchment background and layout
+   shape. Content flows from the top with safe-area-respecting padding;
+   no `justify-content: center` here — vertical centering combined with
+   tall content pushes the top above the device cutout / notch (caught
+   2026-05-13: Hello header was being clipped on iPad). Match welcome-
+   overlay's layout exactly. */
 #hello-overlay {
 background: var(--color-parchment); color: #111; font-family: var(--font);
 overflow-y: auto; -webkit-overflow-scrolling: touch;
-padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bot) + 68px);
+padding: calc(var(--safe-top) + 8px) 24px calc(var(--safe-bot) + 68px);
 background-image: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.10) 100%);
 display: none; position: fixed; inset: 0; z-index: 190;
-flex-direction: column; align-items: center; justify-content: center;
+flex-direction: column; align-items: center;
 }
 #hello-overlay.open { display: flex; }
 body:has(#hello-overlay.open) #info-btn,
@@ -816,8 +820,8 @@ body:has(#hello-overlay.open) #settings-btn { color: rgba(0,0,0,0.35); }
 body:has(#hello-overlay.open) #info-btn:active,
 body:has(#hello-overlay.open) #settings-btn:active { color: rgba(0,0,0,0.75); }
 #hello-content {
-display: flex; flex-direction: column; gap: 22px; max-width: 600px; width: 100%;
-flex-grow: 1; justify-content: center;
+display: flex; flex-direction: column; gap: 18px; max-width: 600px; width: 100%;
+flex-grow: 1;
 }
 
 /* ══ Voice-commands transcript echo ══

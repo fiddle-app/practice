@@ -1,11 +1,123 @@
 'use strict';
 // =================================================
-// SHARED ZOMBIE-PROOF AUDIOCTX MANAGER
+// SHARED AUDIOCONTEXT MANAGER
 // Used by: microbreaker, ear-tuner
 // =================================================
 // Exposed globals: audioCtx, audioCtxGeneration, audioUnlocked, masterGain,
-//                  nukeAudioCtx(), ensureAudio()
-// Each app's audio.js may add its own synth functions that reference audioCtx.
+//                  nukeAudioCtx(), ensureAudio(), muteMasterGain(),
+//                  unmuteMasterGain(), isAudioContextHealthy()
+// Each app's audio.js may add its own synth functions that reference audioCtx,
+// and optionally a getMasterGainForSettings() global (see _resolveMasterGain).
+//
+// =================================================
+// DOCTRINE — read this before changing recovery code
+// =================================================
+//
+// iOS Safari's AudioContext is a hostile environment. Four distinct
+// failure modes exist; we use four different mechanisms to handle them.
+// History below explains why we don't have a single "is this context
+// usable?" predicate.
+//
+// ── Failure modes and their detectors ──
+//
+// 1. SUSPENDED (the normal case after construction).
+//    Detector: `audioCtx.state === 'suspended'`. Reliable.
+//    Recovery: `resume()`, must run inside a user-gesture frame on first
+//    unlock; resume() outside a gesture is empirically permitted once
+//    the session has had at least one earlier gesture.
+//
+// 2. INTERRUPTED (Safari-only state, fires on iOS audio-session
+//    takeover — phone calls, Siri, mic acquisition, AudioWorklet
+//    attachment, system sounds, AirPods reconnect).
+//    Detector: `audioCtx.state === 'interrupted'`. Reliable.
+//    Recovery: `resume()` succeeds without a gesture in our tests.
+//    Handled in two places:
+//      - statechange listener in ensureAudio (passive: catches mid-
+//        session interruptions even without user interaction)
+//      - ensureAudio() body (active: any gesture-frame path through
+//        ensureAudio re-resumes the context — this is the "while you're
+//        in here anyway" insurance)
+//
+// 3. ZOMBIE — FROZEN CLOCK (WebKit bug 263627). State reads 'running'
+//    but `currentTime` is frozen at t0 forever; nothing reaches output.
+//    Detector: `isAudioContextHealthy()` — 100ms wall-clock probe of
+//    currentTime advancement. Reliable for this specific shape.
+//    Recovery: `nukeAudioCtx()` + `ensureAudio()`.
+//
+// 4. ZOMBIE — RUNNING-BUT-SILENT. State reads 'running', currentTime
+//    advances normally, no audio reaches output. NO RELIABLE DETECTOR
+//    EXISTS — the API lies on all surfaces.
+//    Recovery: the doctrine policy below + unconditional re-assertion
+//    of `navigator.audioSession.type` inside ensureAudio (see comment
+//    in that function). One known trigger: cross-PWA audio-session
+//    handoff. When two fiddle-family PWAs (or our PWA + another audio
+//    app) are both backgrounding-and-foregrounding, iOS reassigns the
+//    hardware audio session to whichever is foregrounded. The OS
+//    surfaces no 'interrupted' state to JavaScript — `audioCtx.state`
+//    stays `'running'` even though `audioCtx.destination` produces
+//    nothing audible. AudioWorklet processing (e.g., voice recognition
+//    consuming mic input) continues to work because that path doesn't
+//    flow through the lost hardware route. Re-asserting the session
+//    type forces iOS to re-claim the hardware for us.
+//
+// ── Doctrine: gesture-frame paths always rebuild; silent paths probe ──
+//
+// User-gesture-frame recovery (Resume modal close, Start tap):
+//   → ALWAYS `nukeAudioCtx() + ensureAudio()`. Do not consult any
+//     probe. The user already paid the gesture cost; a fresh context
+//     (~10–30 ms) is cheap insurance against failure mode 4 which we
+//     cannot detect. See each app's `closeResume` and
+//     `_shared/js/visibility-recovery.md` Phase 3.
+//
+// Silent visibility-regain recovery (no modal, branches B and C of the
+// orchestrator):
+//   → USE `isAudioContextHealthy()`. If healthy, leave the context;
+//     if not, silent nuke + rebuild. Cost of a false-positive here
+//     (failure mode 4 sneaks through) is only an extra silent rebuild
+//     after the next genuinely-broken cycle — not a dead app today.
+//     Avoiding the unconditional always-nuke saves the user a fresh
+//     context creation on every backgrounding round-trip.
+//
+// ── Things we tried that did NOT work ──
+//
+// • Flag-based "needs reset on next gesture" (April 2026). Race window
+//   between the flag write and the next ensureAudio meant the flag
+//   often never fired. Replaced by unconditional nukeAudioCtx().
+//
+// • `await audioCtx.close()` inside the gesture handler. The await
+//   broke the iOS user-gesture call stack — the recreated AudioContext
+//   was created outside gesture context and could not be resumed.
+//   Replaced by synchronous nuke + fire-and-forget `old.close()`.
+//
+// • `resume()` as the universal recovery. State='running' zombies are
+//   no-ops for resume(); needs a full nuke + rebuild.
+//
+// • Trusting `isAudioContextHealthy()` to gate the Resume rebuild
+//   (May 13, 2026 morning). Probe returned `healthy` for a context
+//   that produced no audio — failure mode 4 above. Doctrine split:
+//   Resume always nukes; silent paths still probe.
+//
+// • Doing nothing on `'interrupted'` (May 13, 2026 afternoon — Casey's
+//   iPad logs caught it). iOS would interrupt the freshly-rebuilt
+//   context within the same second as Resume's nuke + ensureAudio,
+//   probably from the audio-session reconfiguration triggered by mic
+//   acquire / worklet attach. The statechange listener now auto-resumes.
+//
+// ── Cross-references ──
+//
+// _shared/js/visibility-recovery.md   — Branch A/B/C orchestration for
+//                                       backgrounding + Resume modal flow.
+// _shared/js/version-update-flow.md   — SW update + upgrade-screen flow
+//                                       (separate concern; shares only
+//                                       the broader "iOS PWAs are hostile"
+//                                       mental model).
+// <app>/js/ui.js  → closeResume       — Doctrine in action for the
+//                                       gesture-frame path.
+// <app>/js/ui.js  → _onMaybeForegrounded
+//                                     — Doctrine in action for the
+//                                       silent Branches B and C.
+//
+// =================================================
 
 let audioCtx          = null;
 let audioCtxGeneration = 0;   // bumped on every recreate — stale refs detect zombie
@@ -94,23 +206,39 @@ async function ensureAudio() {
     try { await audioCtx.resume(); } catch(e){}
   }
   audioUnlocked = true;
-  // Request 'play-and-record' audio session.
+  // Request 'play-and-record' audio session — UNCONDITIONALLY, even if
+  // navigator.audioSession.type already reads 'play-and-record'.
   //
-  // Pre-iOS-18, this was 'playback' (output-only, ignores Ring/Silent
-  // switch). iOS 18 made the category strict: a session created with
-  // 'playback' rejects getUserMedia with
-  //   InvalidStateError: AudioSession category is not compatible with
-  //   audio capture.
-  // We need mic capture in microbreaker (recording, voice commands) and
-  // will need it in ear-tuner (pitch detection / VR), so 'play-and-record'
-  // is correct for every app sharing this module.
+  // Why unconditional: the `audioSession.type` field is per-document
+  // state. When the user switches between two fiddle-family PWAs (or
+  // between any of our apps and another audio app), iOS hands the
+  // hardware session to whichever app is foregrounded. Our document's
+  // `audioSession.type` field STAYS at 'play-and-record' because we
+  // never wrote anything else to it — but the iOS hardware path is
+  // owned by the other app. The conditional re-assertion would skip
+  // the setter and the AudioContext.destination would silently produce
+  // no output. (Confirmed by Casey's 2026-05-13 16:20 reproduction:
+  // ear-tuner → microbreaker → ear-tuner. Post-Resume, voice recognition
+  // worked — AudioContext was alive, AudioWorklet running — but
+  // playBothNotes produced no audible output. state=running throughout.
+  // Failure mode 4 in the doctrine block above.)
   //
+  // The assignment is cheap when the value already matches; iOS handles
+  // the idempotent case as a session-claim re-assertion, which is
+  // exactly what we want even when our document believes it already
+  // owns the session.
+  //
+  // Pre-iOS-18, the type was 'playback' (output-only, ignores Ring /
+  // Silent switch). iOS 18 made the category strict: a session created
+  // with 'playback' rejects getUserMedia with InvalidStateError. We
+  // need mic for microbreaker (recording, voice) and ear-tuner (voice),
+  // so 'play-and-record' is correct for every app sharing this module.
   // On iOS Web Safari, 'play-and-record' still routes output to the
-  // speaker (not the receiver), so the notification-sound UX is
-  // unchanged. The previous Ring/Silent-switch immunity is the
-  // unavoidable trade-off — getUserMedia simply isn't usable from a
-  // 'playback' session on iOS 18+.
-  if (navigator.audioSession && navigator.audioSession.type !== 'play-and-record') {
+  // speaker (not the receiver) so the notification-sound UX is
+  // unchanged. The previous Ring / Silent-switch immunity is the
+  // unavoidable trade-off — getUserMedia isn't usable from a 'playback'
+  // session on iOS 18+.
+  if (navigator.audioSession) {
     try { navigator.audioSession.type = 'play-and-record'; } catch(e){}
   }
 }

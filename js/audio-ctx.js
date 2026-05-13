@@ -69,12 +69,28 @@ async function ensureAudio() {
     const gen = audioCtxGeneration;
     ctx.addEventListener('statechange', () => {
       console.log('[ctx] statechange gen=' + gen + ' state=' + ctx.state);
+      // Auto-recover from iOS audio-session interruption. Safari fires
+      // 'interrupted' when the OS takes the session — phone calls,
+      // Siri, AirPods reconnect, system sounds, and (most commonly for
+      // us) the brief session reconfiguration that follows mic
+      // acquisition or worklet attachment on a fresh context. Without
+      // this, the context stays interrupted forever and no audio
+      // reaches the speaker. Guard against resuming a context we've
+      // already nuked — only auto-resume if this is still the live one.
+      if (ctx.state === 'interrupted' && ctx === audioCtx) {
+        ctx.resume().catch(() => {});
+      }
     });
     masterGain = audioCtx.createGain();
     masterGain.gain.value = _resolveMasterGain();
     masterGain.connect(audioCtx.destination);
   }
-  if (audioCtx.state === 'suspended') {
+  // 'suspended' is the normal post-create state (resumes via user
+  // gesture). 'interrupted' is Safari-only: an in-flight iOS audio
+  // session takeover that resume() can also clear. Either way, try
+  // resume() — if we're inside a gesture frame iOS will honour it,
+  // and if not the statechange auto-resume above will catch up.
+  if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
     try { await audioCtx.resume(); } catch(e){}
   }
   audioUnlocked = true;

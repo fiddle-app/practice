@@ -13,6 +13,27 @@ let audioUnlocked     = false;
 
 let masterGain = null;
 
+// Default master-gain resolver. Each app can define a global
+// `getMasterGainForSettings()` to return the right initial gain for its
+// settings model — microbreaker uses notifyVol/0.35, ear-tuner uses
+// settings.volume directly. The fallback preserves the original
+// microbreaker formula so an app without the override still works.
+// Called from ensureAudio (initial setup) and unmuteMasterGain
+// (visibility-regain restore); apps that drive volume via their own
+// settings-change handlers (e.g. microbreaker.updateMasterGain) still
+// own those paths.
+function _resolveMasterGain() {
+  if (typeof getMasterGainForSettings === 'function') {
+    try { return getMasterGainForSettings(); } catch (_) {}
+  }
+  // Fallback for apps without the override. Guards against a missing
+  // `settings` global so a third app syncing this module without one
+  // doesn't ReferenceError before its own getMasterGainForSettings can
+  // be defined.
+  if (typeof settings === 'undefined' || !settings) return 1.0;
+  return (parseFloat(settings.notifyVol) || 0.35) / 0.35;
+}
+
 function nukeAudioCtx(reason) {
   // Abandon old context synchronously — no await, preserves user-gesture stack on iOS.
   if (!audioCtx) return;
@@ -50,7 +71,7 @@ async function ensureAudio() {
       console.log('[ctx] statechange gen=' + gen + ' state=' + ctx.state);
     });
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = (parseFloat(settings.notifyVol) || 0.35) / 0.35;
+    masterGain.gain.value = _resolveMasterGain();
     masterGain.connect(audioCtx.destination);
   }
   if (audioCtx.state === 'suspended') {
@@ -99,7 +120,7 @@ function muteMasterGain() {
 function unmuteMasterGain() {
   if (!audioCtx || !masterGain) return;
   try {
-    const v = (parseFloat(settings.notifyVol) || 0.35) / 0.35;
+    const v = _resolveMasterGain();
     masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
     masterGain.gain.setValueAtTime(v, audioCtx.currentTime);
   } catch (e) {}

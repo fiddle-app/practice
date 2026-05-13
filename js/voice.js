@@ -474,7 +474,23 @@ function vcDestroy() {
 // suspected of carrying over corrupted worker state across iOS
 // suspension. Falls back to a cache-only reload if the IDB delete
 // fails (e.g., user is offline).
-function vcWipeAndRebuild() {
+//
+// `triggered === 'resume'` is the Resume-path defense-in-depth fire
+// (Resume modal with reason='vc-failure'). When that path runs we log
+// a distinctive marker, increment a localStorage counter, and surface
+// a banner — there's no production evidence this branch has ever fired
+// from a non-debug context, and we want to know if it does. Manual
+// debug-button fires pass no argument and stay silent.
+function vcWipeAndRebuild(triggered) {
+  if (triggered === 'resume') {
+    console.error('[vc-wipe] DEFENSE-IN-DEPTH PATH TRIGGERED (Resume vc-failure)');
+    try {
+      localStorage.setItem('mb-vcwipe-last', new Date().toISOString());
+      const n = parseInt(localStorage.getItem('mb-vcwipe-count') || '0', 10) || 0;
+      localStorage.setItem('mb-vcwipe-count', String(n + 1));
+    } catch (_) {}
+    try { showVcWipeBanner(); } catch (_) {}
+  }
   if (vc) {
     try { vc.destroy(); } catch (_) {}
     vc = null;
@@ -493,6 +509,45 @@ function vcWipeAndRebuild() {
   } catch (e) {
     tryReload('wipe /vosk IDB threw, falling back to cache reload');
   }
+}
+
+// Show the vcwipe debug banner. Wires the close button on first call
+// (idempotent). Closing writes mb-vcwipe-ack = current ISO time, which
+// suppresses the boot-time resurrection until a newer fire updates
+// mb-vcwipe-last. No auto-dismiss timer — Casey explicitly asked to be
+// alerted; let the banner sit until he closes it.
+function showVcWipeBanner() {
+  const el = document.getElementById('vcwipe-banner');
+  if (!el) return;
+  const btn = document.getElementById('vcwipe-banner-close');
+  if (btn && !btn._vcwipeWired) {
+    btn._vcwipeWired = true;
+    btn.addEventListener('click', () => {
+      el.classList.remove('open');
+      try { localStorage.setItem('mb-vcwipe-ack', new Date().toISOString()); } catch (_) {}
+    });
+  }
+  el.classList.add('open');
+}
+
+// Boot-time resurrection: if a wipe fired during a previous session and
+// the user never acknowledged the banner, re-show it on next launch.
+// "Newer" means mb-vcwipe-last > mb-vcwipe-ack (or ack missing entirely).
+function vcWipeBannerCheckOnBoot() {
+  try {
+    const last = localStorage.getItem('mb-vcwipe-last');
+    if (!last) return;
+    const ack  = localStorage.getItem('mb-vcwipe-ack');
+    // Date-parse the timestamps so a corrupted/partial localStorage
+    // value can't accidentally suppress the banner. NaN comparisons
+    // are always false, so a bad ack value re-shows the banner (safe).
+    if (ack) {
+      const ackT  = new Date(ack).getTime();
+      const lastT = new Date(last).getTime();
+      if (ackT >= lastT) return;
+    }
+    showVcWipeBanner();
+  } catch (_) {}
 }
 
 // ── Settings change handlers (called from ui.js) ──────────────────

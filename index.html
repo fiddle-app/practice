@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-12 15:28 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-12 15:28">
+     with 2026-05-13 11:00 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-13 11:00">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -113,50 +113,63 @@
   });
 })();
 </script>
-<!-- ── VERSION-COHERENCE CHECK ─────────────────────────────────────
-     Runs before any external JS or CSS loads. Compares the build
-     stamped into this HTML against the last build the user actually
-     finished launching (stored in localStorage under 'mb-last-build').
-     If they differ AND last is non-null, sets window._mbUpgrade so the
-     modal at the top of <body> shows. The modal's OK button unregisters
-     the SW + clears caches + reloads, ensuring the next launch is
-     coherent — guards against the iOS PWA hybrid state where new
-     index.html is served but old JS bundles still come from cache.
-     First-launch (last=null) just records and proceeds normally. -->
+<!-- SW update nudge + controllerchange listener. Inline because:
+     (a) iOS PWA's default 24h staleness threshold is too slow for our
+         deploy cadence — force an update check on every boot;
+     (b) a broken cached boot.js could otherwise prevent the user from
+         ever reaching a new version.
+     The safe-phase logic lives INLINE (not in boot.js) so there's a
+     single listener with no race window. boot.js previously also
+     attached a controllerchange listener inside register().then(),
+     but events firing in the gap between register() resolving and
+     the listener attaching were lost. -->
 <script>
-// Nudge the active SW to check for a new SW main script on every boot.
-// iOS PWA's default staleness threshold for SW update checks is 24h,
-// which is far too slow for our deploy cadence — Casey's app never
-// survives overnight, so without this nudge the user could go several
-// sessions on a stale build before iOS bothered to look for an update.
-//
-// update() fetches sw.js from the network, compares to the cached
-// copy, and (if different) installs the new SW. Our sw.js calls
-// skipWaiting() in its install handler and clients.claim() in
-// activate, so the new SW takes control of the current page
-// immediately rather than waiting for all clients to close — iOS
-// PWA's swipe-up "kill" doesn't reliably release SW control, so the
-// wait-for-clean-session approach left users stuck on stale builds.
-//
-// When the new SW claims the page, navigator.serviceWorker fires
-// 'controllerchange'. We listen and reload — that's what gets the
-// browser to actually fetch fresh HTML through the new SW. Without
-// the reload, the page stays in memory with stale JS even though the
-// SW is now serving new content for any future fetches. Use a
-// session-scoped guard to prevent reload loops if anything goes
-// sideways (e.g. multiple SW updates in quick succession).
-if ('serviceWorker' in navigator) {
+(function () {
+  if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.getRegistration().then(function (reg) {
     if (reg) reg.update().catch(function () {});
   }).catch(function () {});
-  navigator.serviceWorker.addEventListener('controllerchange', function () {
-    try {
-      if (sessionStorage.getItem('mb-sw-reloaded') === '1') return;
-      sessionStorage.setItem('mb-sw-reloaded', '1');
-    } catch (e) {}
+
+  // Safe to reload when the user isn't mid-interaction. Block overlays
+  // are anything modal the user is actively engaging with (resume,
+  // upgrade, reset confirmation, review). Otherwise gate on phase:
+  // mid-session phases (work/break/rest) defer until the user reaches
+  // 'ready' again. phase is declared in timer.js — loads strictly
+  // before this script's listener can fire.
+  function isSafeToReload() {
+    var blockOverlays = ['resume-overlay', 'upgrade-overlay',
+                         'reset-overlay', 'review-overlay',
+                         'welcome-overlay', 'hello-overlay'];
+    for (var j = 0; j < blockOverlays.length; j++) {
+      var bel = document.getElementById(blockOverlays[j]);
+      if (bel && bel.classList.contains('open')) return false;
+    }
+    if (typeof window.phase !== 'undefined' && window.phase !== 'ready') return false;
+    return true;
+  }
+
+  var reloading = false;
+  var pollInterval = null;
+  function tryDeferredReload() {
+    // In-memory flag is sufficient — dies on actual reload. A
+    // sessionStorage guard was previously here, but iOS Home-Screen
+    // PWAs don't reliably clear sessionStorage on force-kill, so once
+    // it got set to '1' by one successful update, all subsequent
+    // updates got their reload blocked indefinitely.
+    if (reloading) return;
+    if (!isSafeToReload()) return;
+    reloading = true;
+    if (pollInterval !== null) { clearInterval(pollInterval); pollInterval = null; }
     window.location.reload();
+  }
+
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    // Reload immediately if safe; else poll every 5s until safe.
+    tryDeferredReload();
+    if (pollInterval !== null) clearInterval(pollInterval);
+    pollInterval = setInterval(tryDeferredReload, 5000);
   });
-}
+})();
 </script>
 <script>
 (function () {
@@ -164,7 +177,7 @@ if ('serviceWorker' in navigator) {
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-12 15:28 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-13 11:00 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -254,12 +267,34 @@ if ('serviceWorker' in navigator) {
   background: linear-gradient(180deg, #c8b89a 0%, #a99880 100%);
   cursor: default; transform: none;
 }
+/* Debug banner — fires when vcWipeAndRebuild runs via the Resume
+   'vc-failure' branch. Intentionally bright so Casey can't miss it on
+   the iPad during real-world use. Slated for removal after a week of
+   testing if the banner never fires (i.e., the defense-in-depth path
+   is empirically dead and we can drop vcWipeAndRebuild entirely). */
+#vcwipe-banner {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 20000; display: none;
+  background: #b83c08; color: #fff;
+  padding: calc(12px + env(safe-area-inset-top)) 50px 12px 16px;
+  font-size: 15px; font-weight: 600; text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+#vcwipe-banner.open { display: block; }
+#vcwipe-banner-close {
+  position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 4px);
+  background: transparent; border: none; color: #fff;
+  font-size: 24px; line-height: 1; cursor: pointer;
+  padding: 6px 10px; -webkit-appearance: none;
+}
 </style>
 <title>Practice Buddy</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="design-tokens.css">
 <link rel="stylesheet" href="design-tokens-app.css">
 <link rel="stylesheet" href="glyph-disc.css">
+<link rel="stylesheet" href="resume-modal.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body style="background-color: rgb(13, 13, 13);">
@@ -277,6 +312,15 @@ if ('serviceWorker' in navigator) {
   <p id="upgrade-msg">Practice Buddy has been upgraded to</p>
   <code id="upgrade-version">—</code>
   <button id="upgrade-ok" type="button">OK</button>
+</div>
+
+<!-- ── DEBUG BANNER — vcWipeAndRebuild Resume-path fires ───────────
+     Wired by js/voice.js. Visible-on-fire + resurrected-on-boot until
+     dismissed. Debug aid; remove after a week of testing if it never
+     fires in real use. -->
+<div id="vcwipe-banner" role="status" aria-live="polite">
+  <span id="vcwipe-banner-text">Voice cache rebuild fired — tell Casey</span>
+  <button id="vcwipe-banner-close" type="button" aria-label="Dismiss">×</button>
 </div>
 <script>
 (function () {
@@ -297,26 +341,34 @@ if ('serviceWorker' in navigator) {
   btn.addEventListener('click', function () {
     btn.disabled = true;
     btn.textContent = 'Updating…';
-    var finish = function () {
-      try { localStorage.setItem('mb-last-build', up.to); } catch (e) {}
-      window.location.replace(window.location.pathname);
-    };
-    var p = Promise.resolve();
+    // Persist the new build IMMEDIATELY — before any async cleanup that
+    // could hang. iOS PWA has been observed to hang on
+    // serviceWorker.unregister() / caches.delete() indefinitely; without
+    // this early write, a hang on the wipe leaves mb-last-build stale
+    // and the modal re-fires on the next launch. The cleanup itself is
+    // defense-in-depth; the SW will serve fresh content on reload
+    // regardless.
+    try { localStorage.setItem('mb-last-build', up.to); } catch (e) {}
+    var doReload = function () { window.location.replace(window.location.pathname); };
+    // Cleanup chain, raced against a 3s timeout. Whichever completes
+    // first triggers the reload.
+    var cleanup = Promise.resolve();
     if ('serviceWorker' in navigator) {
-      p = p.then(function () {
+      cleanup = cleanup.then(function () {
         return navigator.serviceWorker.getRegistrations().then(function (regs) {
           return Promise.all(regs.map(function (r) { return r.unregister(); }));
         });
       }).catch(function () {});
     }
     if (window.caches) {
-      p = p.then(function () {
+      cleanup = cleanup.then(function () {
         return caches.keys().then(function (keys) {
           return Promise.all(keys.map(function (k) { return caches.delete(k); }));
         });
       }).catch(function () {});
     }
-    p.then(finish, finish);
+    var timeout = new Promise(function (resolve) { setTimeout(resolve, 3000); });
+    Promise.race([cleanup, timeout]).then(doReload, doReload);
   });
 })();
 </script>
@@ -776,7 +828,9 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <p class="info-p">Voice recognition allows you to control the app hands-free, but it does drain the battery faster.</p>
-    <p class="info-p">Use voice commands including "start", "play", "pause", "done", and "ready". Say "reps" to open/close the rep-counter and "good" or "wrong" after a good/bad rep. (See settings to customize.) Say "review" to review your recording during micro-breaks... "re-play" to re-play it and "close" to exit the review. </p>
+    <p class="info-p">Voice commands include "start", "play", "pause", "done", and "ready".</p>
+    <p class="info-p">Say "reps" to open/close the rep-counter and "good" or "wrong" after a good/bad rep (see settings to customize).</p>
+    <p class="info-p">Say "review" to review your recording during micro-breaks... "re-play" to re-play it and "close" to exit the review. </p>
     <div class="welcome-push"></div>
     <div class="launch-buttons">
       <button class="launch-btn-primary" onclick="closeHello(true)">Start with voice recognition</button>
@@ -979,6 +1033,7 @@ if ('serviceWorker' in navigator) {
 <script src="js/chime-success.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/mic.js"></script>
+<script src="js/mic-recording.js"></script>
 <!-- vosk-browser.js (5.5 MB UMD) is lazy-loaded by voice.js's loadVoskScript()
      on first opt-in (Get Started, or toggling voice on). Eager-loading on
      boot used to crash the iPhone PWA before the welcome overlay rendered. -->

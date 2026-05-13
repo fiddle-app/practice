@@ -1323,8 +1323,14 @@ function closeResume() {
     micStream = null;
   }
 
-  // SYNCHRONOUSLY initiate ensureAudio + (if needed) acquireMic so iOS
-  // accepts both inside this gesture frame.
+  // Always nukeAudioCtx + ensureAudio inside the gesture frame.
+  // isAudioContextHealthy() has been observed to return false positives
+  // (state='running', currentTime advances slightly, no audio heard) —
+  // a zombie-after-Resume failure ear-tuner hit and microbreaker is
+  // structurally identical to. The user already paid the gesture cost on
+  // the Resume tap, so a fresh AudioContext is cheap insurance. See
+  // _shared/js/visibility-recovery.md Phase 3.
+  if (typeof nukeAudioCtx === 'function') nukeAudioCtx('resume-rebuild');
   const audioP  = ensureAudio();
   const wantMic = settings.voiceCommands || settings.recording;
   const micP    = (wantMic && !micStream) ? acquireMic() : Promise.resolve(true);
@@ -1342,7 +1348,7 @@ function closeResume() {
     // Other reasons (audio/mic broken at probe time) only need the
     // standard rebuild — vc itself was fine, just the audio plumbing.
     if (reason === 'vc-failure' && typeof vcWipeAndRebuild === 'function') {
-      vcWipeAndRebuild();
+      vcWipeAndRebuild('resume');
     } else if (typeof vcKickOffLoad === 'function') {
       vcKickOffLoad();
     }

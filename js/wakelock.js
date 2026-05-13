@@ -1,10 +1,11 @@
 'use strict';
 // ============================================
-// SCREEN WAKE LOCK — microbreaker
+// SCREEN WAKE LOCK — shared across fiddle apps
 // ============================================
-// Holds the screen on during active practice. Intent ("do we want a
-// lock?") is independent of the sentinel ("do we currently hold one?")
-// because iOS auto-releases on background and we re-request on regain.
+// Holds the screen on during active practice / tuning. Intent ("do we
+// want a lock?") is independent of the sentinel ("do we currently hold
+// one?") because iOS auto-releases on background and we re-request on
+// regain.
 //
 // Acquire happens from explicit user gestures (Start tap, Hello/Welcome
 // close, Resume tap). Activity signals (pointerdown, keydown, voice
@@ -58,7 +59,7 @@ function wlRelease(reason) {
 // Called on any user-activity signal. Resets idle timer. If we want a
 // lock but don't hold one (e.g., post-background), attempt acquire. This
 // must be invoked from inside a real user-gesture handler — see call
-// sites in ui.js. Pure programmatic invocations won't be able to acquire.
+// sites in each app. Pure programmatic invocations won't be able to acquire.
 function wlOnActivity(source) {
   if (!_wantWakeLock) return;
   _wlResetIdleTimer();

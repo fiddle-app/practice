@@ -1,0 +1,39 @@
+/* Resume modal — shown after a visibility-regain when the mic stream
+   was invalidated by iOS (per Apple, restarting the mic requires a
+   fresh user gesture). Floats over whatever screen the user was on;
+   tapping Resume is that gesture. Shared verbatim across the fiddle
+   family — markup is identical too (resume-overlay → resume-box →
+   resume-title + resume-msg + resume-btn-action). Uses tokens from
+   design-tokens.css. */
+#resume-overlay {
+display: none; position: fixed; inset: 0; z-index: 220;
+background: rgba(0,0,0,0.55);
+align-items: center; justify-content: center;
+padding: 16px;
+}
+#resume-overlay.open { display: flex; }
+#resume-box {
+background: var(--color-bg-panel); color: rgba(255,255,255,0.92);
+border-radius: 14px; padding: 24px;
+max-width: 360px; width: 100%;
+display: flex; flex-direction: column; gap: 14px; align-items: stretch;
+font-family: var(--font);
+box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+}
+#resume-title {
+font-size: clamp(18px, 5vw, 22px); font-weight: 600; text-align: center;
+letter-spacing: 0.02em;
+}
+#resume-msg {
+font-size: clamp(13px, 3.5vw, 15px); line-height: 1.5; margin: 0;
+color: rgba(255,255,255,0.82); text-align: center;
+}
+#resume-btn-action {
+-webkit-appearance: none; font-family: var(--font);
+font-size: clamp(15px, 4.5vw, 17px); font-weight: 600;
+background: var(--color-orange); color: #fff;
+border: none; border-radius: 999px;
+padding: 12px 28px; cursor: pointer; align-self: center; min-width: 160px;
+transition: background 0.15s;
+}
+#resume-btn-action:active { background: var(--color-orange-dark); }

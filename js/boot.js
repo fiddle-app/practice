@@ -12,6 +12,10 @@ chunkStartTime   = null;
 render();
 rafId = requestAnimationFrame(tick);
 
+// Resurrect the vcWipeAndRebuild debug banner if a wipe fired during a
+// previous session and Casey didn't dismiss it.
+if (typeof vcWipeBannerCheckOnBoot === 'function') vcWipeBannerCheckOnBoot();
+
 // Init-complete marker — pair with the watchdog in index.html. If the app
 // stays alive 2 seconds past initial render without crashing, we consider
 // boot successful and write the clean-shutdown marker. This compensates
@@ -47,27 +51,11 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations()
       .then(regs => regs.forEach(r => r.unregister()));
   } else {
-    // Auto-update on every launch — iOS home-screen PWAs honour the browser's
-    // built-in 24h update check very loosely, leaving users many days out of
-    // date. Force a check now, push any new SW to activate, and reload when
-    // safe (only on the Ready screen, never mid-practice).
-    //
-    // Why deferred-on-Ready instead of immediate reload: an unconditional
-    // reload-on-controllerchange yanks the user out of work/break/rest with
-    // no warning. We instead post SKIP_WAITING to the new SW (so it activates
-    // in the background) and then watch phase transitions; when phase becomes
-    // 'ready' we reload. The user finishes their chunk before we apply.
-    let reloadingForUpdate = false;
-    let updatePollInterval = null;
-    function tryDeferredReload() {
-      if (reloadingForUpdate) return;
-      // Only auto-reload on the Ready screen — never yank the user out of
-      // work/break/rest. `phase` is declared in timer.js, which loads
-      // strictly before boot.js, so it's always defined here.
-      if (phase !== 'ready') return;
-      reloadingForUpdate = true;
-      window.location.reload();
-    }
+    // Register SW + push any new install through to activation.
+    // The `controllerchange → reload` flow lives in the inline <head>
+    // script (with safe-phase deferral). Attaching it there avoids the
+    // race where a second listener inside register().then() would miss
+    // the event if controllerchange fires before register resolves.
     navigator.serviceWorker.register('sw.js').then(reg => {
       reg.update().catch(() => {});
       reg.addEventListener('updatefound', () => {
@@ -80,16 +68,6 @@ if ('serviceWorker' in navigator) {
             newSW.postMessage({ type: 'SKIP_WAITING' });
           }
         });
-      });
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('[sw] controllerchange visible=' + (document.visibilityState === 'visible') +
-                    ' phase=' + (typeof phase !== 'undefined' ? phase : 'undef'));
-        // Reload immediately if already on Ready, else poll every 5s until
-        // the user reaches Ready. Multi-update sequences (rare but possible)
-        // would otherwise stack intervals — clear any prior poll first.
-        tryDeferredReload();
-        if (updatePollInterval !== null) clearInterval(updatePollInterval);
-        updatePollInterval = setInterval(tryDeferredReload, 5000);
       });
     });
   }

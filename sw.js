@@ -1,9 +1,9 @@
 'use strict';
 
 // Service worker for Practice Buddy (microbreaker)
-// 2026-05-12 15:28 is replaced by deploy.sh at deploy time — do NOT edit manually.
+// 2026-05-13 11:00 is replaced by deploy.sh at deploy time — do NOT edit manually.
 
-const CACHE_VER    = '2026-05-12 15:28';
+const CACHE_VER    = '2026-05-13 11:00';
 const STATIC_CACHE = 'microbreaker-static-' + CACHE_VER;
 const FONT_CACHE   = 'microbreaker-fonts';
 
@@ -33,6 +33,7 @@ const PRECACHE = [
   'design-tokens.css',
   'design-tokens-app.css',
   'glyph-disc.css',
+  'resume-modal.css',
   'fonts/fonts.css',
   'fonts/inconsolata-latin.woff2',
   'fonts/nunito-latin.woff2',
@@ -43,6 +44,7 @@ const PRECACHE = [
   'js/chime-success.js',
   'js/audio.js',
   'js/mic.js',
+  'js/mic-recording.js',
   // vosk-browser.js intentionally omitted — voice.js lazy-loads it on first
   // opt-in. The fetch handler below will populate STATIC_CACHE on first use,
   // so subsequent launches still serve it offline.

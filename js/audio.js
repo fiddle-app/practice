@@ -6,6 +6,15 @@
 //             settings (settings.js)
 // =================================================
 
+// Resolver consumed by _shared/js/audio-ctx.js. Returns the initial
+// master-gain value used by ensureAudio and unmuteMasterGain. Matches
+// the shared module's historical default — keeps current behaviour. The
+// 0.8x attenuation lives in updateMasterGain below (settings-driven
+// writes only) so we don't change the initial-boot loudness here.
+function getMasterGainForSettings() {
+  return (parseFloat(settings.notifyVol) || 0.35) / 0.35;
+}
+
 function updateMasterGain() {
   if (masterGain) {
     // Global 0.8x attenuation — every sound is 20% quieter than the per-sound gains imply.

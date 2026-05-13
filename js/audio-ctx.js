@@ -78,6 +78,34 @@
 //     Avoiding the unconditional always-nuke saves the user a fresh
 //     context creation on every backgrounding round-trip.
 //
+// ── iOS audio session category (separate concern, same module) ──
+//
+// `navigator.audioSession.type` controls iOS's AVAudioSession category
+// — independent from AudioContext state but managed here because the
+// two interact (getUserMedia on the wrong category throws). Two values:
+//
+//   'playback'         — output only. Routes to Bluetooth A2DP, AirPlay,
+//                        car stereo, AirPods (stereo music quality).
+//                        getUserMedia REJECTS from this category on
+//                        iOS 18+ (InvalidStateError).
+//   'play-and-record'  — full duplex. Required for getUserMedia. Routes
+//                        output to device speaker / HFP mono Bluetooth
+//                        only — NOT to A2DP, NOT to AirPlay, NOT to
+//                        car stereo. The "voice call" category.
+//
+// Dynamic switch policy: ensureAudio reads `appWantsMic()` (resolver
+// pattern — each app defines it) and sets the right category. acquireMic
+// forces 'play-and-record' just before getUserMedia (belt-and-suspenders
+// for the case where appWantsMic flipped true after the last ensureAudio).
+// releaseMic re-evaluates and may drop back to 'playback'.
+//
+// Trigger that prompted the dynamic switch: Casey's 2026-05-13 car
+// test. Both apps were unconditionally 'play-and-record' which meant
+// notes played through the iPad speaker even with the car's Bluetooth
+// connected. YouTube and music apps routed correctly to the car —
+// because they use 'playback' category. Switching to dynamic gives
+// the same routing behaviour when mic isn't needed.
+//
 // ── Things we tried that did NOT work ──
 //
 // • Flag-based "needs reset on next gesture" (April 2026). Race window
@@ -146,6 +174,36 @@ function _resolveMasterGain() {
   return (parseFloat(settings.notifyVol) || 0.35) / 0.35;
 }
 
+// Resolves the desired iOS audio session category. Each app can define
+// a global `appWantsMic()` returning true/false. The category controls
+// iOS hardware routing:
+//
+//   'playback'         — output-only. Routes to Bluetooth A2DP (stereo
+//                        music quality), AirPlay, headphones, car audio.
+//                        Matches what music apps and YouTube use.
+//                        iOS 18+ REJECTS getUserMedia from this category.
+//   'play-and-record'  — full duplex (output + input). Required for
+//                        getUserMedia on iOS 18+. Routes output to
+//                        device speaker / HFP mono Bluetooth only —
+//                        NOT to A2DP, NOT to AirPlay. The "voice call"
+//                        category.
+//
+// We use 'playback' when the app doesn't need mic (better routing UX —
+// audio reaches Bluetooth car stereo / AirPods / etc.) and switch to
+// 'play-and-record' when mic is actually needed (VR engaged, recording
+// active). acquireMic() in mic.js also forces 'play-and-record' just
+// before getUserMedia as a belt-and-suspenders measure.
+//
+// Apps without the override default to 'play-and-record' (current
+// behaviour preserved — safe choice for an unknown app that may or
+// may not need mic).
+function _resolveAudioSessionType() {
+  if (typeof appWantsMic === 'function') {
+    try { return appWantsMic() ? 'play-and-record' : 'playback'; } catch (_) {}
+  }
+  return 'play-and-record';
+}
+
 function nukeAudioCtx(reason) {
   // Abandon old context synchronously — no await, preserves user-gesture stack on iOS.
   if (!audioCtx) return;
@@ -206,40 +264,40 @@ async function ensureAudio() {
     try { await audioCtx.resume(); } catch(e){}
   }
   audioUnlocked = true;
-  // Request 'play-and-record' audio session — UNCONDITIONALLY, even if
-  // navigator.audioSession.type already reads 'play-and-record'.
+  // Set the audio session category — UNCONDITIONALLY (re-assign even
+  // when navigator.audioSession.type already reads the desired value).
   //
-  // Why unconditional: the `audioSession.type` field is per-document
-  // state. When the user switches between two fiddle-family PWAs (or
-  // between any of our apps and another audio app), iOS hands the
-  // hardware session to whichever app is foregrounded. Our document's
-  // `audioSession.type` field STAYS at 'play-and-record' because we
-  // never wrote anything else to it — but the iOS hardware path is
-  // owned by the other app. The conditional re-assertion would skip
-  // the setter and the AudioContext.destination would silently produce
-  // no output. (Confirmed by Casey's 2026-05-13 16:20 reproduction:
-  // ear-tuner → microbreaker → ear-tuner. Post-Resume, voice recognition
-  // worked — AudioContext was alive, AudioWorklet running — but
-  // playBothNotes produced no audible output. state=running throughout.
-  // Failure mode 4 in the doctrine block above.)
+  // Why unconditional: the `audioSession.type` field is per-document.
+  // When the user switches between two fiddle-family PWAs (or our PWA
+  // and another audio app), iOS hands the hardware session to whichever
+  // is foregrounded. Our document's type field stays at its last
+  // setting because we never wrote anything else — but the iOS
+  // hardware path is owned by the other app. The conditional skip
+  // ("type already matches") would miss the cross-PWA case and
+  // AudioContext.destination would silently produce no output.
+  // (Confirmed by Casey 2026-05-13 16:20: ear-tuner → microbreaker →
+  // ear-tuner produced state='running' but no audible output until
+  // we dropped the conditional. Failure mode 4 in the doctrine block.)
   //
-  // The assignment is cheap when the value already matches; iOS handles
-  // the idempotent case as a session-claim re-assertion, which is
-  // exactly what we want even when our document believes it already
-  // owns the session.
+  // The TYPE itself is dynamic — see _resolveAudioSessionType. Apps
+  // that need mic (VR active, recording active) get 'play-and-record';
+  // apps in playback-only mode get 'playback', which routes through
+  // Bluetooth A2DP / AirPlay / car stereo. Casey's 2026-05-13 car
+  // test caught this: 'play-and-record' had been the unconditional
+  // category, so notes played through the device speaker instead of
+  // car Bluetooth.
   //
-  // Pre-iOS-18, the type was 'playback' (output-only, ignores Ring /
-  // Silent switch). iOS 18 made the category strict: a session created
-  // with 'playback' rejects getUserMedia with InvalidStateError. We
-  // need mic for microbreaker (recording, voice) and ear-tuner (voice),
-  // so 'play-and-record' is correct for every app sharing this module.
-  // On iOS Web Safari, 'play-and-record' still routes output to the
-  // speaker (not the receiver) so the notification-sound UX is
-  // unchanged. The previous Ring / Silent-switch immunity is the
-  // unavoidable trade-off — getUserMedia isn't usable from a 'playback'
-  // session on iOS 18+.
+  // The setter is cheap on iOS when the value already matches; the
+  // idempotent re-assignment serves as our session-claim re-assertion.
+  //
+  // Pre-iOS-18, 'playback' worked even when mic was needed because
+  // getUserMedia didn't enforce a category match. iOS 18 made the
+  // category strict: getUserMedia on a 'playback' session rejects with
+  // InvalidStateError. The dynamic switch is how we keep both worlds
+  // working — see mic.js acquireMic for the gesture-frame switch
+  // ahead of getUserMedia.
   if (navigator.audioSession) {
-    try { navigator.audioSession.type = 'play-and-record'; } catch(e){}
+    try { navigator.audioSession.type = _resolveAudioSessionType(); } catch(e){}
   }
 }
 

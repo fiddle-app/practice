@@ -15,6 +15,17 @@ function getMasterGainForSettings() {
   return (parseFloat(settings.notifyVol) || 0.35) / 0.35;
 }
 
+// Resolver consumed by _shared/js/audio-ctx.js (ensureAudio) and
+// _shared/js/mic.js (releaseMic). Returns true when the app needs mic
+// access — drives the dynamic audio-session category. Microbreaker
+// needs mic when either voice commands OR recording is enabled.
+// Without either, returning false lets the shared module use
+// 'playback' category, which routes output through Bluetooth A2DP /
+// car stereo / AirPlay (the routing 'play-and-record' blocks).
+function appWantsMic() {
+  return !!(settings.voiceCommands || settings.recording);
+}
+
 function updateMasterGain() {
   if (masterGain) {
     // Global 0.8x attenuation — every sound is 20% quieter than the per-sound gains imply.

@@ -46,6 +46,15 @@ async function acquireMic() {
   if (_micAcquireP) return _micAcquireP;
   _micAcquireP = (async () => {
     try {
+      // Force 'play-and-record' before getUserMedia. iOS 18+ rejects
+      // getUserMedia with InvalidStateError if the audio session is
+      // currently 'playback'. ensureAudio's resolver may have set
+      // 'playback' if appWantsMic was false at that moment (e.g., VR
+      // toggled on AFTER ensureAudio ran); we override here because
+      // by definition the caller wants mic right now.
+      if (navigator.audioSession) {
+        try { navigator.audioSession.type = 'play-and-record'; } catch(e){}
+      }
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       const tracks = micStream.getAudioTracks();
       console.log('[mic] acquired tracks=' + tracks.length +
@@ -122,6 +131,18 @@ function releaseMic() {
   if (micStream) {
     try { micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
     micStream = null;
+  }
+  // Re-evaluate the audio session category after release. If the app
+  // no longer wants mic (e.g., VR toggled off, persistent-mute auto-
+  // release with no other mic consumer), drop back to 'playback' so
+  // output routes through Bluetooth A2DP / AirPlay / car stereo
+  // instead of the device speaker. If something else still wants mic,
+  // the resolver returns 'play-and-record' and the setter is a no-op.
+  if (navigator.audioSession && typeof appWantsMic === 'function') {
+    try {
+      const t = appWantsMic() ? 'play-and-record' : 'playback';
+      navigator.audioSession.type = t;
+    } catch (e) {}
   }
 }
 

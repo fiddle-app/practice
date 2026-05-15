@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-13 13:55 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-13 13:55">
+     with 2026-05-15 15:14 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-15 15:14">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -197,11 +197,38 @@
 </script>
 <script>
 (function () {
+  // Skip the upgrade-comparison flow entirely on Capacitor. The
+  // mechanism (SW unregister + caches.delete) is a no-op there — no
+  // SW runs in the Cap webview, no Cache Storage to clean. Every
+  // `cap sync` also bumps BUILD_DATE, so a mismatch fires on every
+  // rebuild and the modal becomes pure dev-time friction. We still
+  // record mb-last-build so that a hypothetical Cap→PWA migration
+  // wouldn't see a phantom upgrade on the first PWA launch.
+  // Detection inlined (window.Capacitor injected before any page
+  // script) since this runs before js/platform.js loads.
+  var isCap = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function'
+                 && window.Capacitor.isNativePlatform());
+  if (isCap) {
+    window._mbUpgrade = null;
+    try {
+      var capMeta    = document.querySelector('meta[name="microbreaker-build"]');
+      var capCurrent = (capMeta && capMeta.content) || null;
+      var capPh      = '%' + '%BUILD_DATE%' + '%';
+      if (capCurrent && capCurrent !== capPh) {
+        localStorage.setItem('mb-last-build', capCurrent);
+      }
+      localStorage.setItem('mb-boot-decision', JSON.stringify({
+        action: 'cap-skipped', ts: Date.now()
+      }));
+    } catch (e) {}
+    return;
+  }
+
   var meta    = document.querySelector('meta[name="microbreaker-build"]');
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-13 13:55 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-15 15:14 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -235,6 +262,130 @@
       ts: Date.now(), last: last, current: current, action: action
     }));
   } catch (e) {}
+})();
+</script>
+<!-- Defense-in-depth upgrade detection + reusable modal-show.
+     The synchronous coherence check above only catches an upgrade once
+     the page has reloaded onto new HTML (meta would then differ from
+     last-seen). The intended trigger for that reload —
+     `controllerchange` after the new SW activates — can be silently
+     dropped on iOS Home-Screen PWAs when the page is suspended during
+     activation. The page then sits on stale HTML even though the SW's
+     static cache holds the new build.
+
+     This block compares the SW cache key directly against meta. When
+     they diverge it surfaces the standard upgrade modal — same OK-tap
+     cleanup-and-reload flow as the meta-vs-last-seen path, just driven
+     by a different signal. Runs at boot and on visibilitychange→visible
+     so a deploy that lands while the iPad is asleep is caught when the
+     user comes back. Idempotent — re-checks no-op if the modal is
+     already open or _mbUpgrade is already set. Mirrors ear-tuner. -->
+<script>
+(function () {
+  // Skip on Capacitor — same rationale as the coherence check above.
+  if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function'
+      && window.Capacitor.isNativePlatform()) return;
+
+  // Reusable show. Idempotent. Defers if DOM isn't ready yet (cache
+  // check below can fire from <head> before the modal element exists).
+  window._mbShowUpgradeModal = function (up) {
+    if (!up) return;
+    if (!document.body || !document.getElementById('upgrade-overlay')) {
+      document.addEventListener('DOMContentLoaded', function () {
+        window._mbShowUpgradeModal(up);
+      }, { once: true });
+      return;
+    }
+    var ov  = document.getElementById('upgrade-overlay');
+    var btn = document.getElementById('upgrade-ok');
+    if (!ov || !btn) return;
+    if (ov.classList.contains('open')) return;
+    var ver = document.getElementById('upgrade-version');
+    if (ver) ver.textContent = up.to;
+    ov.classList.add('open');
+    // Disable the OK button for 1500 ms so ghost taps from launching
+    // the app icon (a finger still hovering when the modal renders)
+    // cannot immediately dismiss it. Visible state: dimmed.
+    btn.disabled = true;
+    setTimeout(function () { btn.disabled = false; }, 1500);
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = 'Updating…';
+      // Persist the new build IMMEDIATELY — before any async cleanup
+      // that could hang. iOS PWA has been observed to hang on
+      // serviceWorker.unregister() / caches.delete() indefinitely;
+      // without this early write, a hang on the wipe leaves
+      // mb-last-build stale and the modal re-fires on next launch.
+      try { localStorage.setItem('mb-last-build', up.to); } catch (e) {}
+      // Tell the next page-load's controllerchange listener to ignore
+      // its first event — the post-reload re-register fires CC
+      // immediately as the fresh SW claims the page. Without the skip,
+      // that triggers a deferred reload that loops the user back
+      // through Hello.
+      try { sessionStorage.setItem('mb-skip-next-cc', '1'); } catch (e) {}
+      var doReload = function () { window.location.replace(window.location.pathname); };
+      var cleanup = Promise.resolve();
+      if ('serviceWorker' in navigator) {
+        cleanup = cleanup.then(function () {
+          return navigator.serviceWorker.getRegistrations().then(function (regs) {
+            return Promise.all(regs.map(function (r) { return r.unregister(); }));
+          });
+        }).catch(function () {});
+      }
+      if (window.caches) {
+        cleanup = cleanup.then(function () {
+          return caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+          });
+        }).catch(function () {});
+      }
+      var timeout = new Promise(function (resolve) { setTimeout(resolve, 3000); });
+      Promise.race([cleanup, timeout]).then(doReload, doReload);
+    });
+  };
+
+  function cacheCheck() {
+    if (!window.caches) return;
+    if (window._mbUpgrade) return;  // already detected by coherence check
+    var meta = document.querySelector('meta[name="microbreaker-build"]');
+    var metaVer = meta && meta.content;
+    var PH = '%' + '%BUILD_DATE%' + '%';
+    if (!metaVer || metaVer === PH) return;
+    caches.keys().then(function (keys) {
+      // During SW activate the GC pass can briefly leave two
+      // microbreaker-static-* caches present. Take the lexicographic
+      // max (BUILD_DATE 'YYYY-MM-DD HH:mm' sorts correctly as a string)
+      // so we always compare against the newest cache, not whichever
+      // the implementation happens to enumerate first.
+      var newestVer = null;
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i].indexOf('microbreaker-static-') !== 0) continue;
+        var v = keys[i].replace('microbreaker-static-', '');
+        if (newestVer === null || v > newestVer) newestVer = v;
+      }
+      if (newestVer === null) return;
+      // Only fire on a forward upgrade. If newestVer < metaVer (user
+      // cleared caches manually, or some other regression), showing the
+      // modal would write the OLDER build to mb-last-build on OK-tap
+      // and re-fire on every subsequent boot.
+      if (newestVer <= metaVer) return;
+      if (window._mbUpgrade) return;  // race: coherence path got there first
+      window._mbUpgrade = { from: metaVer, to: newestVer };
+      try {
+        localStorage.setItem('mb-boot-decision', JSON.stringify({
+          ts: Date.now(), last: metaVer, current: newestVer,
+          action: 'cache-mismatch'
+        }));
+      } catch (e) {}
+      if (window._mbShowUpgradeModal) {
+        window._mbShowUpgradeModal(window._mbUpgrade);
+      }
+    }).catch(function () {});
+  }
+  cacheCheck();
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') cacheCheck();
+  });
 })();
 </script>
 <!-- Self-contained styles for the upgrade modal. Deliberately NOT using
@@ -347,62 +498,12 @@
   <button id="vcwipe-banner-close" type="button" aria-label="Dismiss">×</button>
 </div>
 <script>
-(function () {
-  var up = window._mbUpgrade;
-  if (!up) return;
-  var ov  = document.getElementById('upgrade-overlay');
-  var ver = document.getElementById('upgrade-version');
-  var btn = document.getElementById('upgrade-ok');
-  if (!ov || !btn) return;
-  if (ver) ver.textContent = up.to;
-  ov.classList.add('open');
-  // Disable the OK button for 1500 ms so ghost taps from launching the
-  // app icon (a finger still hovering when the modal renders) cannot
-  // immediately dismiss it. Visible state: dimmed; the user has time to
-  // see, read, and deliberately tap.
-  btn.disabled = true;
-  setTimeout(function () { btn.disabled = false; }, 1500);
-  btn.addEventListener('click', function () {
-    btn.disabled = true;
-    btn.textContent = 'Updating…';
-    // Persist the new build IMMEDIATELY — before any async cleanup that
-    // could hang. iOS PWA has been observed to hang on
-    // serviceWorker.unregister() / caches.delete() indefinitely; without
-    // this early write, a hang on the wipe leaves mb-last-build stale
-    // and the modal re-fires on the next launch. The cleanup itself is
-    // defense-in-depth; the SW will serve fresh content on reload
-    // regardless.
-    try { localStorage.setItem('mb-last-build', up.to); } catch (e) {}
-    // Tell the next page-load's controllerchange listener to ignore the
-    // first event — boot.js re-registers the SW from scratch after our
-    // unregister, and the fresh SW fires controllerchange immediately
-    // for content we're already on. Without the skip, that triggers a
-    // deferred reload that fires the moment Hello closes, looping the
-    // user back through Hello. The flag is read AND consumed at the
-    // top of the listener script on next load.
-    try { sessionStorage.setItem('mb-skip-next-cc', '1'); } catch (e) {}
-    var doReload = function () { window.location.replace(window.location.pathname); };
-    // Cleanup chain, raced against a 3s timeout. Whichever completes
-    // first triggers the reload.
-    var cleanup = Promise.resolve();
-    if ('serviceWorker' in navigator) {
-      cleanup = cleanup.then(function () {
-        return navigator.serviceWorker.getRegistrations().then(function (regs) {
-          return Promise.all(regs.map(function (r) { return r.unregister(); }));
-        });
-      }).catch(function () {});
-    }
-    if (window.caches) {
-      cleanup = cleanup.then(function () {
-        return caches.keys().then(function (keys) {
-          return Promise.all(keys.map(function (k) { return caches.delete(k); }));
-        });
-      }).catch(function () {});
-    }
-    var timeout = new Promise(function (resolve) { setTimeout(resolve, 3000); });
-    Promise.race([cleanup, timeout]).then(doReload, doReload);
-  });
-})();
+// Show the modal if the synchronous coherence check in <head> already
+// detected an upgrade. The async cache-key path defined in <head> calls
+// _mbShowUpgradeModal directly when it detects, so this body call only
+// matters for the meta-vs-last-seen path. _mbShowUpgradeModal is
+// undefined on Capacitor (the IIFE early-returns there) — guard for it.
+if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
 </script>
 
 <!-- SPRITE-INLINE -->
@@ -1063,6 +1164,7 @@
      LS storage and the boot-watchdog helpers. Matches the hardcoded
      'mb-' prefix in the inline boot-watchdog at the top of <head>. -->
 <script>window.__DIAG_LOG_PREFIX__ = 'mb';</script>
+<script src="js/platform.js"></script>
 <script src="js/diag-log.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/audio-ctx.js"></script>
@@ -1081,6 +1183,7 @@
 <script src="js/safe-area.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/rep-counter.js"></script>
+<script src="js/register-sw.js"></script>
 <script src="js/boot.js"></script>
 </body>
 </html>

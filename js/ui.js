@@ -1044,22 +1044,15 @@ $('close-btn').addEventListener('click', () => {
   ensureAudio();
   beep(196, 0.45, 0.30, 'sine', 0.0); // G3
   beep(131, 0.90, 0.28, 'sine', 0.5);  // C3
-  if (phase === 'ready') {
-    setTimeout(() => {
-      try { window.close(); } catch(e) {}
-      if (!window.closed) history.back();
-    }, 1600);
-  } else {
-    stopRecording();
-    reviewBlob = null;
-    currentRound = 0;
-    practiceTime = 0; chunkStartTime = null;
-    setTimeout(() => {
-      phase = 'ready'; isPaused = false; phaseTimeLeft = 0;
-      waitingToAdvance = false;
-      render();
-    }, 1600);
-  }
+  stopRecording();
+  reviewBlob = null;
+  currentRound = 0;
+  practiceTime = 0; chunkStartTime = null;
+  setTimeout(() => {
+    phase = 'ready'; isPaused = false; phaseTimeLeft = 0;
+    waitingToAdvance = false;
+    render();
+  }, 1600);
 });
 
 // =================================================
@@ -1309,14 +1302,27 @@ function closeResume() {
   $('resume-overlay').classList.remove('open');
   const reason = _resumeReason;
   _resumeReason = null;
+  _performResumeRebuild(reason);
+}
 
+// Body of the rebuild work, callable WITHOUT showing the overlay.
+// On PWA, only closeResume() invokes this (after the user taps the
+// Resume button, which provides the gesture frame iOS requires for
+// getUserMedia). On Cap, _onMaybeForegrounded invokes it directly,
+// bypassing the modal — native permission grant means getUserMedia
+// outside a gesture is permitted.
+function _performResumeRebuild(reason) {
   // Pre-flight: validate the cached mic stream BEFORE deciding whether
   // to re-acquire. iOS may end the underlying audio source during a
   // long background — that turns each track's readyState to 'ended'.
-  // If our stream is dead, drop it now so the acquireMic() below fires
-  // inside this gesture frame (iOS allows getUserMedia inside the
-  // Resume click). If it's live, reuse it — re-acquiring needlessly
-  // would trigger iOS's own mic-toggle indicator sounds.
+  // If our stream is dead, drop it now so the acquireMic() below
+  // re-acquires fresh. On PWA the call site is the Resume button,
+  // which provides the gesture frame Safari requires for getUserMedia.
+  // On Cap the call site is _onMaybeForegrounded — no gesture, but
+  // native permission grant makes getUserMedia outside a gesture
+  // permitted there. If the cached stream is still live, reuse it —
+  // re-acquiring needlessly would trigger iOS's own mic-toggle
+  // indicator sounds.
   if (micStream && typeof micStreamIsLive === 'function' && !micStreamIsLive()) {
     console.log('[gate] resume: mic stream invalidated by iOS, re-acquiring');
     try { micStream.getTracks().forEach(t => t.stop()); } catch (_) {}
@@ -1446,6 +1452,10 @@ async function _onMaybeForegrounded() {
   console.log('[gate] foregrounded — audioOk=' + audioOk + ' micOk=' + micOk);
 
   // ── Branch 1: mic invalidated → Resume modal (gesture needed) ────
+  // On Cap, the gesture requirement doesn't apply (mic permission is
+  // granted natively, so getUserMedia outside a gesture works), so we
+  // skip the modal entirely and silently rebuild. PWA still needs the
+  // modal because Safari standalone enforces the gesture rule.
   if (!micOk) {
     if (typeof micStream !== 'undefined' && micStream) {
       try { micStream.getTracks().forEach(t => t.stop()); } catch (_) {}
@@ -1454,7 +1464,13 @@ async function _onMaybeForegrounded() {
     if (!audioOk && typeof nukeAudioCtx === 'function') {
       nukeAudioCtx('regain-unhealthy');
     }
-    showResume(audioOk ? 'mic-stale' : 'audio-and-mic');
+    const reason = audioOk ? 'mic-stale' : 'audio-and-mic';
+    if (typeof isNative === 'function' && isNative()) {
+      console.log('[gate] silent resume on Cap — mic invalidated, re-acquiring without modal');
+      _performResumeRebuild(reason);
+    } else {
+      showResume(reason);
+    }
     return;
   }
 
@@ -1471,8 +1487,13 @@ async function _onMaybeForegrounded() {
       ? await isAudioContextHealthy()
       : true;
     if (!audioOk2) {
-      console.log('[gate] silent audio rebuild failed — escalating to Resume');
-      showResume('audio-unhealthy');
+      if (typeof isNative === 'function' && isNative()) {
+        console.log('[gate] silent audio rebuild failed on Cap — full rebuild without modal');
+        _performResumeRebuild('audio-unhealthy');
+      } else {
+        console.log('[gate] silent audio rebuild failed — escalating to Resume');
+        showResume('audio-unhealthy');
+      }
       return;
     }
   }
@@ -1531,8 +1552,13 @@ async function _onMaybeForegrounded() {
       ? await isAudioContextHealthy()
       : true;
     if (!audioOk3) {
-      console.log('[gate] silent vc rebuild — fresh audioCtx still unhealthy, escalating to Resume');
-      showResume('vc-failure');
+      if (typeof isNative === 'function' && isNative()) {
+        console.log('[gate] silent vc rebuild — audioCtx unhealthy on Cap, full rebuild without modal');
+        _performResumeRebuild('vc-failure');
+      } else {
+        console.log('[gate] silent vc rebuild — fresh audioCtx still unhealthy, escalating to Resume');
+        showResume('vc-failure');
+      }
       return;
     }
     if (typeof vcKickOffLoad === 'function') vcKickOffLoad();

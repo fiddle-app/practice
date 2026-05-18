@@ -5,7 +5,7 @@
 // =================================================
 // Release mic tracks between phases on Safari/iOS (so the mic indicator turns off).
 // On Chrome, keep the stream alive to avoid re-prompting each work phase.
-const BUILD_DATE = '2026-05-18 13:43';   // stamped automatically by deploy.sh — do not edit manually
+const BUILD_DATE = '2026-05-18 15:38';   // stamped automatically by deploy.sh — do not edit manually
 const IS_SAFARI  = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 const DEFAULTS = {
@@ -19,7 +19,7 @@ const DEFAULTS = {
   // config (ui.js STEP_CFG) bounds this between 60s and 900s — see the
   // drawWaveform memory note there.
   maxRecDur:             600,
-  breaksCountAsPractice: false,
+  breaksCountAsPractice: true,
   notifyVol:             0.35,
   reviewVol:             0.8,
   recording:             true,

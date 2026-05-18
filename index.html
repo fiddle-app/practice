@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-18 13:43 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-18 13:43">
+     with 2026-05-18 15:38 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-18 15:38">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -228,7 +228,7 @@
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-18 13:43 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-18 15:38 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -790,7 +790,6 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
   <div class="s-row"><div class="s-label">Micro-break</div><div class="s-stepper"><button class="step-btn" data-field="breakDur" data-dir="-1">−</button><div class="s-val" id="sv-break">15s</div><button class="step-btn" data-field="breakDur" data-dir="1">+</button></div></div>
   <div class="s-row"><div class="s-label">Rest</div><div class="s-stepper"><button class="step-btn" data-field="restDur" data-dir="-1">−</button><div class="s-val" id="sv-rest">2:00</div><button class="step-btn" data-field="restDur" data-dir="1">+</button></div></div>
   <div class="s-row"><div class="s-label">Maximum Recording</div><div class="s-stepper"><button class="step-btn" data-field="maxRecDur" data-dir="-1">−</button><div class="s-val" id="sv-maxrec">10:00</div><button class="step-btn" data-field="maxRecDur" data-dir="1">+</button></div></div>
-  <div class="tog-row"><div class="tog-label">Include breaks in practice time</div><label class="tog-sw"><input type="checkbox" id="s-breaks-count"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="s-sec">Behavior</div>
   <div class="tog-row"><div class="tog-label">Automatically Advance</div><label class="tog-sw"><input type="checkbox" id="s-auto"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="tog-row"><div class="tog-label">Record / Review Practice</div><label class="tog-sw"><input type="checkbox" id="s-record"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
@@ -848,6 +847,7 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
        'mb-debug-revealed' localStorage key. -->
   <div id="diagnostics-section" style="display:none;">
   <div class="s-sec">Diagnostics</div>
+  <div class="tog-row"><div class="tog-label">Include breaks in practice time</div><label class="tog-sw"><input type="checkbox" id="s-breaks-count"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="tog-row"><div class="tog-label">Limit VR Vocabulary</div><label class="tog-sw"><input type="checkbox" id="s-limit-vr"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="s-row"><div><div class="s-label">Voice Model</div><div class="s-sub" id="s-vc-status">—</div></div><button class="log-action-btn" id="s-vc-wipe-cache" title="Delete the cached Vosk model (debug)">Wipe cache</button></div>
   <div class="s-row"><div><div class="s-label">Welcome Screen</div><div class="s-sub">Reset to show on next launch</div></div><button id="welcome-reset-btn" class="log-action-btn" onclick="resetWelcome()">Reset</button></div>

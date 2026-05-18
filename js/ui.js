@@ -1037,7 +1037,20 @@ $('rev-vol').addEventListener('input', e => {
 // =================================================
 // INFO & CLOSE BUTTONS
 // =================================================
+// Info, like Settings/Review, auto-pauses the timer on open and restores
+// the prior pause state on close — so the practice-time counter doesn't
+// keep ticking while the user is reading the info screen.
+let _wasPausedInfo = false;
+function _closeInfo() {
+  $('info-overlay').classList.remove('open');
+  $('info-btn').style.visibility = '';
+  $('settings-btn').style.visibility = '';
+  if (!_wasPausedInfo && phase !== 'ready') { isPaused = false; lastTickTime = null; }
+  render();
+}
 $('info-btn').addEventListener('click', () => {
+  _wasPausedInfo = isPaused;
+  if (!isPaused && phase !== 'ready') { isPaused = true; render(); }
   const bd = $('build-date-display');
   if (bd) bd.textContent = 'build ' + (typeof BUILD_DATE === 'string' ? BUILD_DATE : '(unknown)');
   $('info-overlay').classList.add('open');
@@ -1045,18 +1058,8 @@ $('info-btn').addEventListener('click', () => {
   $('settings-btn').style.visibility = 'hidden';
   setBg('#c9c4bc'); /* muted parchment edge — app-specific */
 });
-$('info-close-btn').addEventListener('click', () => {
-  $('info-overlay').classList.remove('open');
-  $('info-btn').style.visibility = '';
-  $('settings-btn').style.visibility = '';
-  render();
-});
-$('info-close-btn-bottom').addEventListener('click', () => {
-  $('info-overlay').classList.remove('open');
-  $('info-btn').style.visibility = '';
-  $('settings-btn').style.visibility = '';
-  render();
-});
+$('info-close-btn').addEventListener('click', _closeInfo);
+$('info-close-btn-bottom').addEventListener('click', _closeInfo);
 
 $('close-btn').addEventListener('click', () => {
   ensureAudio();

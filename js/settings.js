@@ -5,7 +5,7 @@
 // =================================================
 // Release mic tracks between phases on Safari/iOS (so the mic indicator turns off).
 // On Chrome, keep the stream alive to avoid re-prompting each work phase.
-const BUILD_DATE = '2026-05-18 13:09';   // stamped automatically by deploy.sh — do not edit manually
+const BUILD_DATE = '2026-05-18 13:43';   // stamped automatically by deploy.sh — do not edit manually
 const IS_SAFARI  = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 const DEFAULTS = {
@@ -70,19 +70,11 @@ let settings = (() => {
 })();
 
 function saveSettings() {
-  localStorage.setItem('pt_v4', JSON.stringify({
-    workDur: settings.workDur, breakDur: settings.breakDur,
-    chunkDur: settings.chunkDur, restDur: settings.restDur,
-    maxRecDur: settings.maxRecDur,
-    breaksCountAsPractice: settings.breaksCountAsPractice,
-    notifyVol: settings.notifyVol,
-    reviewVol: settings.reviewVol,
-    recording: settings.recording,
-    autoAdvance: settings.autoAdvance,
-    voiceCommands:  settings.voiceCommands,
-    limitVrVocab:   settings.limitVrVocab,
-    vcKeepLastWord: settings.vcKeepLastWord,
-    messages: settings.messages, restQ: settings.restQ,
-    vrGood: settings.vrGood, vrBad: settings.vrBad
-  }));
+  // Iterate over DEFAULTS so any new key added there is automatically
+  // persisted. Avoids the previous drift where saveSettings/doReset/DEFAULTS
+  // each had to be updated by hand and a missed key (vcKeepLastWord) caused
+  // Reset-to-defaults to silently ignore that setting.
+  const out = {};
+  for (const key of Object.keys(DEFAULTS)) out[key] = settings[key];
+  localStorage.setItem('pt_v4', JSON.stringify(out));
 }

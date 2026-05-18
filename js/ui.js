@@ -217,20 +217,16 @@ $('s-vc-keep').addEventListener('change', e => {
 
 $('s-reset-btn').addEventListener('click', () => { $('reset-overlay').classList.add('open'); });
 
+// messages/vrGood/vrBad are user-edited lists. They only get restored on
+// the "Yes, reset everything" branch (clearMessages=true) — otherwise the
+// user keeps their reminders and voice synonyms.
+const RESET_DESTRUCTIVE_ONLY = new Set(['messages', 'vrGood', 'vrBad']);
+
 function doReset(clearMessages) {
-  settings.workDur = DEFAULTS.workDur; settings.breakDur = DEFAULTS.breakDur;
-  settings.chunkDur = DEFAULTS.chunkDur; settings.restDur = DEFAULTS.restDur;
-  settings.maxRecDur = DEFAULTS.maxRecDur;
-  settings.breaksCountAsPractice = DEFAULTS.breaksCountAsPractice;
-  settings.notifyVol = DEFAULTS.notifyVol; settings.reviewVol = DEFAULTS.reviewVol; settings.recording = DEFAULTS.recording;
-  settings.autoAdvance = DEFAULTS.autoAdvance; settings.restQ = [...DEFAULTS.restQ];
-  settings.voiceCommands = DEFAULTS.voiceCommands;
-  settings.limitVrVocab  = DEFAULTS.limitVrVocab;
-  settings.vcKeepLastWord = DEFAULTS.vcKeepLastWord;
-  if (clearMessages) {
-    settings.messages = [...DEFAULTS.messages];
-    settings.vrGood   = [...DEFAULTS.vrGood];
-    settings.vrBad    = [...DEFAULTS.vrBad];
+  for (const key of Object.keys(DEFAULTS)) {
+    if (!clearMessages && RESET_DESTRUCTIVE_ONLY.has(key)) continue;
+    const val = DEFAULTS[key];
+    settings[key] = Array.isArray(val) ? [...val] : val;
   }
   saveSettings(); syncSettingsUI(); renderMsgList(); renderVrLists(); render();
   if (typeof vcOnSettingChange === 'function') {

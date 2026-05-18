@@ -347,9 +347,25 @@ body:is(:has(#info-overlay.open), :has(#settings-overlay.open), :has(#review-ove
   -webkit-user-select: none;
   caret-color: transparent;
   outline: none;
+  position: relative;  /* anchor for the ::before tap-zone overlay */
 }
+/* Visible button is only 28x28, but finger taps on iPhone routinely
+   miss it and hit the adjacent rep dots instead. Pseudo-element extends
+   the hit zone into the panel padding (left/right) and into the 6px
+   gap between + and − (meeting at the gap midpoint, no overlap).
+   The visible disc, border, and glyph are unchanged. */
+.rc-step::before {
+  content: '';
+  position: absolute;
+  left: -14px;   /* into the panel's 14px left padding — close button is
+                    well beyond that, so no encroachment */
+  right: -12px;  /* almost the full 14px gap to the rep-dots grid */
+}
+#rc-plus::before  { top: -10px; bottom: -3px; }
+#rc-minus::before { top:  -3px; bottom: -10px; }
 .rc-step:active { background: rgba(0,0,0,0.40); }
 .rc-step:disabled { opacity: 0.35; cursor: default; }
+.rc-step:disabled::before { content: none; }
 
 /* Central tap area — always sized for two rows of dots, so taps above
    or below an under-filled row still register as a success.

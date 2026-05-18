@@ -226,15 +226,17 @@ function doReset(clearMessages) {
   settings.autoAdvance = DEFAULTS.autoAdvance; settings.restQ = [...DEFAULTS.restQ];
   settings.voiceCommands = DEFAULTS.voiceCommands;
   settings.limitVrVocab  = DEFAULTS.limitVrVocab;
+  settings.vcKeepLastWord = DEFAULTS.vcKeepLastWord;
   if (clearMessages) {
     settings.messages = [...DEFAULTS.messages];
     settings.vrGood   = [...DEFAULTS.vrGood];
     settings.vrBad    = [...DEFAULTS.vrBad];
   }
   saveSettings(); syncSettingsUI(); renderMsgList(); renderVrLists(); render();
-  if (clearMessages && typeof vcOnSettingChange === 'function') {
+  if (typeof vcOnSettingChange === 'function') {
+    vcOnSettingChange('vcKeepLastWord');
     // Force the recognizer to pick up the restored defaults.
-    vcOnSettingChange('vrGood');
+    if (clearMessages) vcOnSettingChange('vrGood');
   }
 }
 $('reset-yes').addEventListener('click',    () => { $('reset-overlay').classList.remove('open'); doReset(true);  });
@@ -487,28 +489,6 @@ if ($('s-reset-counter')) {
   });
 }
 
-if ($('s-sim-visibility')) {
-  // Diagnostic: runs the same pause/resume cycle as a real visibility
-  // transition, without actually backgrounding. If iOS chimes fire from
-  // this on the iPhone PWA, the cause is somewhere in our pause logic
-  // (muteMasterGain / pauseRecording / vcStop) rather than the iOS
-  // visibility-driven AVAudioSession lifecycle.
-  $('s-sim-visibility').addEventListener('click', async (ev) => {
-    const btn = ev.currentTarget;
-    const orig = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Backgrounding…';
-    console.log('[sim-vis] simulating background');
-    _onMaybeBackgrounded();
-    await new Promise(r => setTimeout(r, 3000));
-    btn.textContent = 'Foregrounding…';
-    console.log('[sim-vis] simulating foreground');
-    await _onMaybeForegrounded();
-    btn.textContent = 'Done';
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
-  });
-}
-
 if ($('diag-log-clear')) {
   $('diag-log-clear').addEventListener('click', () => {
     if (typeof diagClear === 'function') diagClear();
@@ -565,12 +545,54 @@ $('settings-btn').addEventListener('click', () => {
   if (!isPaused && phase !== 'ready') { isPaused = true; render(); }
   syncSettingsUI(); renderMsgList(); renderVrLists(); renderDiagLog(); renderBootStatus();
   renderSwStatus(); renderMemStatus();
+  applyDebugReveal();
+  const sbd = $('settings-build-date');
+  if (sbd) sbd.textContent = 'build ' + (typeof BUILD_DATE === 'string' ? BUILD_DATE : '(unknown)');
   $('settings-overlay').classList.add('open');
   $('info-btn').style.visibility = 'hidden';
   $('settings-btn').style.visibility = 'hidden';
   // Match safe-area edges to settings background (--color-bg-panel)
   setBg('#1a1a1a');
 });
+
+// Debug reveal — 7 taps within the #s-debug-tap-zone (Reset button +
+// build-date footer area) toggles the Diagnostics section's visibility.
+// Persisted in 'mb-debug-revealed' so it survives reloads.
+function applyDebugReveal() {
+  const revealed = localStorage.getItem('mb-debug-revealed') === '1';
+  const sec = document.getElementById('diagnostics-section');
+  if (sec) sec.style.display = revealed ? '' : 'none';
+}
+
+function toggleDebugReveal() {
+  const revealed = localStorage.getItem('mb-debug-revealed') === '1';
+  if (revealed) localStorage.removeItem('mb-debug-revealed');
+  else          localStorage.setItem('mb-debug-revealed', '1');
+  applyDebugReveal();
+}
+
+(function () {
+  const zone = document.getElementById('s-debug-tap-zone');
+  if (!zone) return;
+  let taps = 0;
+  let lastTapAt = 0;
+  const REQUIRED = 7;
+  // Consecutive taps must land within 3s of each other. Tapping the
+  // Reset-to-defaults button opens the reset overlay which covers the
+  // zone — dismissing takes longer than the window, so Reset taps
+  // effectively don't accumulate. Empty-area / build-date taps do.
+  const WINDOW_MS = 3000;
+  zone.addEventListener('click', () => {
+    const now = Date.now();
+    if (now - lastTapAt > WINDOW_MS) taps = 0;
+    lastTapAt = now;
+    taps++;
+    if (taps >= REQUIRED) {
+      taps = 0;
+      toggleDebugReveal();
+    }
+  });
+})();
 $('s-done-btn').addEventListener('click', () => {
   // If a synonym input is focused, blur it first so its change handler fires
   // (the input handler persists each keystroke; only the change handler

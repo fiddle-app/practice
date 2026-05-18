@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-15 15:14 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-15 15:14">
+     with 2026-05-18 13:09 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-18 13:09">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -228,7 +228,7 @@
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-15 15:14 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-18 13:09 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -795,6 +795,7 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
   <div class="tog-row"><div class="tog-label">Automatically Advance</div><label class="tog-sw"><input type="checkbox" id="s-auto"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="tog-row"><div class="tog-label">Record / Review Practice</div><label class="tog-sw"><input type="checkbox" id="s-record"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="tog-row"><div class="tog-label">Listen for voice commands</div><label class="tog-sw"><input type="checkbox" id="s-voice"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+  <div class="tog-row"><div class="tog-label">Keep last word on-screen</div><label class="tog-sw"><input type="checkbox" id="s-vc-keep"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="s-row" style="padding: 8px 0; align-items: center;">
     <div class="s-label" style="flex:1;">Notification Volume</div>
     <div class="s-stepper" style="width:142px;display:flex;align-items:center;gap:6px;">
@@ -842,9 +843,12 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
       Each works only on the screens where its action makes sense.
     </div>
   </div>
+  <!-- Diagnostics section is hidden by default. Revealed by 7 taps in
+       the bottom tap zone (#s-debug-tap-zone). Persisted in
+       'mb-debug-revealed' localStorage key. -->
+  <div id="diagnostics-section" style="display:none;">
   <div class="s-sec">Diagnostics</div>
   <div class="tog-row"><div class="tog-label">Limit VR Vocabulary</div><label class="tog-sw"><input type="checkbox" id="s-limit-vr"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
-  <div class="tog-row"><div class="tog-label">Keep last word on-screen</div><label class="tog-sw"><input type="checkbox" id="s-vc-keep"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   <div class="s-row"><div><div class="s-label">Voice Model</div><div class="s-sub" id="s-vc-status">—</div></div><button class="log-action-btn" id="s-vc-wipe-cache" title="Delete the cached Vosk model (debug)">Wipe cache</button></div>
   <div class="s-row"><div><div class="s-label">Welcome Screen</div><div class="s-sub">Reset to show on next launch</div></div><button id="welcome-reset-btn" class="log-action-btn" onclick="resetWelcome()">Reset</button></div>
   <div class="s-row"><div><div class="s-label">App Version</div><div class="s-sub" id="s-build-date"></div><div class="s-sub" id="s-sw-status" style="margin-top:1px; white-space: pre-line;"></div></div><button class="log-action-btn" onclick="reloadFromServer()">Reload</button></div>
@@ -871,20 +875,20 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
     </div>
   </div>
   <div class="s-row" style="flex-direction:column; align-items:stretch; gap:6px; padding: 8px 0;">
-    <div class="s-label">Audio interruption test</div>
-    <div class="s-sub" style="line-height: 1.5;">
-      Runs the same pause/resume cycle that fires on a real visibility transition, without actually backgrounding. Tests whether the iOS chime tones come from our pause logic or from iOS's own AVAudioSession lifecycle.
-    </div>
-    <button id="s-sim-visibility" class="log-action-btn">Simulate 3s visibility loss</button>
-  </div>
-  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:6px; padding: 8px 0;">
     <div class="s-label">Hard reset</div>
     <div class="s-sub" style="line-height: 1.5;">
       Wipes ALL local data — settings, diag log, voice cache, service worker. Requires internet on next launch. Use only if Reload doesn't help (fonts broken, version blank, app behaving strangely).
     </div>
     <button id="s-hard-reset-btn" class="log-action-btn" style="background: rgba(220,80,80,0.18); color: rgba(255,200,200,0.95);">Hard reset</button>
   </div>
-  <button id="s-reset-btn">Reset to defaults…</button>
+  </div>
+  <!-- Bottom tap zone for the secret 7-tap debug-reveal. Wraps the
+       Reset button and the always-visible build-date footer; the
+       click counter listens on this whole region. -->
+  <div id="s-debug-tap-zone">
+    <button id="s-reset-btn">Reset to defaults…</button>
+    <div class="s-build-date-footer" id="settings-build-date"></div>
+  </div>
   <div style="height:28px"></div>
   </div>
   </div>
@@ -915,15 +919,15 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
     </div>
     <div class="info-p"><strong>Practice Buddy</strong>:
       <ul style="margin:0.3em 0 0 1.2em;padding:0;line-height:1.7;">
+        <li>Asks you "intentional practice" questions and offers reminders that you can customize.</li>
         <li>Automatically records each "round" of practice.</li>
+        <li>Reminds you to take "micro-breaks" between rounds, where you can review your recording with one click.</li>
         <li>Has a "rep counter" <svg width="20" height="20" aria-hidden="true" style="vertical-align:middle;"><use href="#icon-rep-counter"/></svg> that counts "correct" repetitions hands-free.
           <ul style="margin:0.2em 0 0 1.2em;padding:0;">
             <li>Say "good" for success or "wrong" for a failure.</li>
-            <li>Have fun discovering all of the alternate words for success and failure... NSFW.</li>
+            <li>Add more-expressive synonyms for "good" and "wrong" in settings <svg width="18" height="18" aria-hidden="true" style="vertical-align:middle;"><use href="#icon-gear"/></svg>.</li>
           </ul>
         </li>
-        <li>Reminds you to take "micro-breaks" between rounds, where you can review your recording with one click.</li>
-        <li>Asks you "intentional practice" questions and offers reminders that you can customize.</li>
       </ul>
     </div>
     <p class="info-p">Tap <button class="welcome-inline-btn" onclick="$('info-overlay').classList.add('open');" aria-label="Info"><svg width="22" height="22" aria-hidden="true"><use href="#icon-info-i"/></svg></button> (lower right) for more info on efficient practice.</p>

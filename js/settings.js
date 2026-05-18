@@ -5,7 +5,7 @@
 // =================================================
 // Release mic tracks between phases on Safari/iOS (so the mic indicator turns off).
 // On Chrome, keep the stream alive to avoid re-prompting each work phase.
-const BUILD_DATE = '2026-05-15 15:14';   // stamped automatically by deploy.sh — do not edit manually
+const BUILD_DATE = '2026-05-18 13:09';   // stamped automatically by deploy.sh — do not edit manually
 const IS_SAFARI  = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 const DEFAULTS = {
@@ -27,7 +27,7 @@ const DEFAULTS = {
   voiceCommands:         true,    // app-wide voice control when model is ready
   limitVrVocab:          true,    // strict grammar — recognizer constrained to command vocabulary
   vcKeepLastWord:        false,   // when on, last recognized word stays visible until next match
-  messages:              ['Remember your goal','Flex your wrist','Audiate to intonate','Create emphasis'],
+  messages:              ['Remember your goal','Audiate to intonate','Create emphasis'],
   restQ:                 ['What is your goal?', 'How will you achieve it?', ''],
   // The user's words for "correct" and "wrong". When non-empty these are
   // exactly what the recognizer matches against — there's no built-in
@@ -35,7 +35,7 @@ const DEFAULTS = {
   // voice.js falls back to ['correct'] / ['wrong'] so the rep counter
   // always has at least one trigger word.
   vrGood:                ['correct', 'good'],
-  vrBad:                 ['wrong',   'restart', 'no']
+  vrBad:                 ['wrong',   'restart']
 };
 
 let settings = (() => {

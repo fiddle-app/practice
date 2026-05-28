@@ -179,8 +179,11 @@ $('s-record').addEventListener('change', async e => {
     const ok = await acquireMic();
     if (ok && phase === 'work') startRecording();
   } else {
-    stopRecording(); // also releases mic tracks
+    stopRecording();
     reviewBlob = null; recChunks = [];
+    // Both features are now off — release the stream so the OS mic indicator
+    // clears and the audio session can drop back to playback category.
+    if (!settings.voiceCommands && typeof releaseMic === 'function') releaseMic();
   }
   saveSettings(); render();
 });
@@ -195,6 +198,9 @@ $('s-voice').addEventListener('change', async e => {
     // Acquire mic now (within the user-gesture chain on iOS) so voice can
     // start when the rep panel next expands.
     await acquireMic();
+  } else if (!wantOn && !settings.recording && typeof releaseMic === 'function') {
+    // Both features are now off — release the stream.
+    releaseMic();
   }
   if (typeof vcOnSettingChange === 'function') vcOnSettingChange('voiceCommands');
 });

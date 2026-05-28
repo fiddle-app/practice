@@ -204,6 +204,7 @@ let _vcSuppressedThisSession = false;
 function setVoiceSessionSuppressed(suppressed) {
   _vcSuppressedThisSession = !!suppressed;
 }
+function isVoiceSessionSuppressed() { return _vcSuppressedThisSession; }
 
 // Lazy-load vosk-browser.js (5.5 MB UMD bundle that exposes window.Vosk).
 // Eager-loading via a <script> tag in index.html cost us ~6 MB of boot-time

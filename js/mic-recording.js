@@ -24,6 +24,7 @@ let recChunks     = [];
 let reviewBlob    = null;
 let recCapTimer   = null;
 let recPendingTimer = null;
+let _recGeneration  = 0; // incremented on every startRecording; stale async paths bail
 
 // Delay between the round-start bell firing and the MediaRecorder actually
 // starting. The bell (playWorkStart) is A5 with a 2.5s exponential decay,
@@ -91,25 +92,26 @@ function startRecording() {
   // gain node are owned by ui.js's closeReview, not this module.
   clearReviewBlob();
   if (recPendingTimer) { clearTimeout(recPendingTimer); recPendingTimer = null; }
+  const gen = ++_recGeneration;
   if (!micStream) {
     acquireMic().then(ok => {
-      if (!ok) return;
+      if (!ok || gen !== _recGeneration) return; // stale — another startRecording fired
       // Play bell after mic acquired — AudioContext is resumed by acquireMic
       if (audioUnlocked && phase === 'work') playWorkStart();
-      _scheduleBeginRec();
+      _scheduleBeginRec(gen);
     });
     return;
   }
   // mic already acquired — caller plays the bell synchronously before this.
-  _scheduleBeginRec();
+  _scheduleBeginRec(gen);
 }
 
-function _scheduleBeginRec() {
+function _scheduleBeginRec(gen) {
   recPendingTimer = setTimeout(() => {
     recPendingTimer = null;
     // User may have toggled recording off, paused, or skipped past the
     // work phase during the bell delay — bail rather than capture stale audio.
-    if (!settings.recording || phase !== 'work') return;
+    if (!settings.recording || phase !== 'work' || gen !== _recGeneration) return;
     _beginRec();
   }, RECORD_START_DELAY_MS);
 }

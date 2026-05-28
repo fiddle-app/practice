@@ -14,6 +14,12 @@
   --color-green-light: #4d9966;   /* mid green — foreground/icon/text on dark surfaces (e.g. settings close icon, log-action feedback). Matches ear-tuner's settings-done checkmark. */
   --color-blue-break:  #141560;   /* micro-break phase bg (meditative blue) */
   --color-blue-break-dark: #080928; /* micro-break vignette edge */
+  --color-danger:      #c0392b;   /* danger surface (destructive button bg, danger-modal primary) */
+  --color-danger-text: #ff9999;   /* danger foreground (light red text/border on dark surfaces — stale-override badges, error inlines) */
+
+  /* Modal/dialog backdrop scrims (sit behind elevated dialog boxes) */
+  --color-backdrop-heavy:  rgba(0, 0, 0, 0.72);  /* primary dialog scrim (#tl-dialog-root and friends) */
+  --color-backdrop-medium: rgba(0, 0, 0, 0.65);  /* lighter scrim (BDS dialog, sync-setup overlay) */
 
   /* Dark-mode surfaces */
   --color-bg-dark:           #0d0d0d;   /* base body bg / ready-phase edge */

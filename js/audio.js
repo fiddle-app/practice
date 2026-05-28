@@ -18,12 +18,15 @@ function getMasterGainForSettings() {
 // Resolver consumed by _shared/js/audio-ctx.js (ensureAudio) and
 // _shared/js/mic.js (releaseMic). Returns true when the app needs mic
 // access — drives the dynamic audio-session category. Microbreaker
-// needs mic when either voice commands OR recording is enabled.
+// needs mic when recording is enabled, or when voice commands are
+// enabled AND not suppressed for this session ("No thanks" at launch).
 // Without either, returning false lets the shared module use
 // 'playback' category, which routes output through Bluetooth A2DP /
 // car stereo / AirPlay (the routing 'play-and-record' blocks).
 function appWantsMic() {
-  return !!(settings.voiceCommands || settings.recording);
+  const voiceActive = settings.voiceCommands &&
+    !(typeof isVoiceSessionSuppressed === 'function' && isVoiceSessionSuppressed());
+  return !!(settings.recording || voiceActive);
 }
 
 function updateMasterGain() {

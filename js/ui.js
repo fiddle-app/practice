@@ -5,7 +5,8 @@
 // =================================================
 $('btn-play-pause').addEventListener('click', () => { ensureAudio().then(() => togglePlayPause()); });
 $('time-display').addEventListener('click', () => { ensureAudio().then(() => { if (waitingToAdvance) skipNext(); else togglePlayPause(); }); });
-$('ready-ring-text').addEventListener('click', () => { ensureAudio().then(() => { if (waitingToAdvance) skipNext(); else togglePlayPause(); }); });
+$('ring-wrap').addEventListener('click',       () => { if (phase === 'ready') $('start-btn-inner').click(); });
+$('ready-ring-text').addEventListener('click', () => { if (phase === 'ready') { $('start-btn-inner').click(); return; } ensureAudio().then(() => { if (waitingToAdvance) skipNext(); else togglePlayPause(); }); });
 $('btn-prev').addEventListener('click',       () => { ensureAudio().then(() => restartPhase()); });
 $('btn-next').addEventListener('click',       () => { ensureAudio().then(() => skipNext()); });
 $('start-btn-inner').addEventListener('click', () => {

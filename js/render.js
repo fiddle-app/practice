@@ -118,6 +118,7 @@ function render() {
   const showReady = isReady || waitingToAdvance;
   elTimeDisplay.style.display = (!showReady && (isWork || isBreak || isRest)) ? 'block' : 'none';
   elReadyRing.style.display   = showReady ? 'block' : 'none';
+  $('ring-wrap').classList.toggle('ring-start-ready', isReady);
   elReadyRing.textContent     = waitingToAdvance
     ? (practiceTime >= 3 * settings.chunkDur ? 'Asleep?' : (phase === 'break' ? 'Ready?' : 'Done?'))
     : 'Ready?';

@@ -137,6 +137,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
 #ring-wrap {
   position: relative;
   width: min(256px, 63vw); height: min(256px, 63vw); flex-shrink: 0;
+  cursor: default;
+}
+#ring-wrap.ring-start-ready {
+  cursor: pointer;
 }
 /* Soft-dome face behind the timer ring — see _shared/design/soft-dome.md.
    Sized so the dome is *slightly larger* than the ring's outer edge

@@ -85,7 +85,17 @@ function vcBuildCommands() {
   const userBad  = vcDedupeBucket(settings.vrBad);
   const claim  = userGood.length ? userGood : VC_BUILTIN_GOOD_FALLBACK.slice();
   const reject = userBad.length  ? userBad  : VC_BUILTIN_BAD_FALLBACK.slice();
-  return Object.assign({ claim, reject }, VC_BUILTIN_COMMANDS);
+  const cmds = Object.assign({ claim, reject }, VC_BUILTIN_COMMANDS);
+  const overrides = settings.vcCommandOverrides || {};
+  for (const [id, ov] of Object.entries(overrides)) {
+    if (!Object.prototype.hasOwnProperty.call(cmds, id)) continue;
+    if (ov.enabled === false) { delete cmds[id]; continue; }
+    const triggers = vcDedupeBucket(
+      String(ov.trigger || '').split(',').map(s => s.trim()).filter(Boolean)
+    );
+    if (triggers.length) cmds[id] = triggers;
+  }
+  return cmds;
 }
 
 // ── Per-screen command dispatch ───────────────────────────────────

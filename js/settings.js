@@ -5,7 +5,7 @@
 // =================================================
 // Release mic tracks between phases on Safari/iOS (so the mic indicator turns off).
 // On Chrome, keep the stream alive to avoid re-prompting each work phase.
-const BUILD_DATE = '2026-05-28 17:37';   // stamped automatically by deploy.sh — do not edit manually
+const BUILD_DATE = '2026-05-30 02:40';   // stamped automatically by deploy.sh — do not edit manually
 const IS_SAFARI  = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 const DEFAULTS = {
@@ -29,13 +29,18 @@ const DEFAULTS = {
   vcKeepLastWord:        false,   // when on, last recognized word stays visible until next match
   messages:              ['Remember your goal','Audiate to intonate','Create emphasis'],
   restQ:                 ['What is your goal?', 'How will you achieve it?', ''],
+  restQClose:            ['Anything that wasn\'t practiced?', 'What should you do next time?'],
   // The user's words for "correct" and "wrong". When non-empty these are
   // exactly what the recognizer matches against — there's no built-in
   // synonym list merged underneath. If the user clears one entirely,
   // voice.js falls back to ['correct'] / ['wrong'] so the rep counter
   // always has at least one trigger word.
   vrGood:                ['correct', 'good'],
-  vrBad:                 ['wrong',   'restart']
+  vrBad:                 ['wrong'],
+  // Per-command overrides: keyed by command ID, value is { enabled: bool, trigger: string }.
+  // trigger is comma-separated words/phrases replacing the builtin list; empty = use builtin.
+  // Missing key = enabled with builtin triggers.
+  vcCommandOverrides:    {}
 };
 
 let settings = (() => {

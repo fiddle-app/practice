@@ -129,6 +129,9 @@ function syncSettingsUI() {
   $('s-restq1').value = rq[0] || '';
   $('s-restq2').value = rq[1] || '';
   $('s-restq3').value = rq[2] || '';
+  const rqc = settings.restQClose || ['', ''];
+  $('s-restqc1').value = rqc[0] || '';
+  $('s-restqc2').value = rqc[1] || '';
   const sbd = $('s-build-date');
   if (sbd) sbd.textContent = 'build ' + (typeof BUILD_DATE === 'string' ? BUILD_DATE : '(unknown)');
   _syncingUI = false;
@@ -204,6 +207,7 @@ $('s-voice').addEventListener('change', async e => {
     releaseMic();
   }
   if (typeof vcOnSettingChange === 'function') vcOnSettingChange('voiceCommands');
+  renderVcCmdList();
 });
 
 $('s-limit-vr').addEventListener('change', e => {
@@ -235,7 +239,7 @@ function doReset(clearMessages) {
     const val = DEFAULTS[key];
     settings[key] = Array.isArray(val) ? [...val] : val;
   }
-  saveSettings(); syncSettingsUI(); renderMsgList(); renderVrLists(); render();
+  saveSettings(); syncSettingsUI(); renderMsgList(); renderVcCmdList(); render();
   if (typeof vcOnSettingChange === 'function') {
     vcOnSettingChange('vcKeepLastWord');
     // Force the recognizer to pick up the restored defaults.
@@ -250,6 +254,12 @@ $('reset-cancel').addEventListener('click', () => { $('reset-overlay').classList
   $(id).addEventListener('input', () => {
     if (!settings.restQ) settings.restQ = ['', '', ''];
     settings.restQ[i] = $(id).value; saveSettings(); render();
+  });
+});
+['s-restqc1','s-restqc2'].forEach((id, i) => {
+  $(id).addEventListener('input', () => {
+    if (!settings.restQClose) settings.restQClose = ['', ''];
+    settings.restQClose[i] = $(id).value; saveSettings(); render();
   });
 });
 
@@ -275,54 +285,99 @@ $('add-msg-btn').addEventListener('click', () => {
 
 // Voice Recognition synonym lists. `field` is 'vrGood' or 'vrBad'; `listId` is
 // the container element ID. Same edit/delete UX as renderMsgList — add via
-// the section's add-button below, edit inline, delete via × button. Any change
-// is persisted and re-armed in the recognizer via vcOnSettingChange.
-function renderVrList(field, listId) {
-  const list = $(listId); if (!list) return;
-  list.innerHTML = '';
-  const arr = Array.isArray(settings[field]) ? settings[field] : [];
-  arr.forEach((word, i) => {
-    const row = document.createElement('div'); row.className = 'msg-row';
+// ── Voice command override list ───────────────────────────────────
+const VC_CMD_DEFS = [
+  { id: 'cmdStart',      label: 'Start',                   builtin: 'start' },
+  { id: 'cmdReady',      label: 'Ready (start screen)',     builtin: 'ready' },
+  { id: 'cmdDone',       label: 'End round',               builtin: 'done' },
+  { id: 'cmdNext',       label: 'Next',                    builtin: 'next' },
+  { id: 'cmdPause',      label: 'Pause',                   builtin: 'pause' },
+  { id: 'cmdPlay',       label: 'Play',                    builtin: 'play' },
+  { id: 'cmdReview',     label: 'Open recording review',   builtin: 'review, recording' },
+  { id: 'cmdReplay',     label: 'Replay recording',        builtin: 'replay' },
+  { id: 'cmdClose',      label: 'Close / end chunk',       builtin: 'close' },
+  { id: 'cmdRepCounter', label: 'Open rep counter',        builtin: 'reps, counter' },
+  { id: '__vrGood',      label: 'Words for "correct"',     builtin: 'correct, good' },
+  { id: '__vrBad',       label: 'Words for "wrong"',       builtin: 'wrong' },
+  { id: 'cmdInfo',       label: 'Open info',               builtin: 'info, information' },
+  { id: 'cmdSettings',   label: 'Open settings',           builtin: 'settings' },
+];
+
+function renderVcCmdList() {
+  const container = $('vc-cmd-list');
+  if (!container) return;
+  if (!settings.vcCommandOverrides) settings.vcCommandOverrides = {};
+  const masterOn = settings.voiceCommands !== false;
+  container.innerHTML = '';
+  for (const def of VC_CMD_DEFS) {
+    const isVrField = def.id === '__vrGood' || def.id === '__vrBad';
+    const vrField   = def.id === '__vrGood' ? 'vrGood' : 'vrBad';
+
+    let enabled, trigger;
+    if (isVrField) {
+      const arr = Array.isArray(settings[vrField]) ? settings[vrField] : [];
+      enabled = arr.length > 0;
+      trigger = arr.join(', ');
+    } else {
+      const ov = settings.vcCommandOverrides[def.id] || {};
+      enabled  = ov.enabled !== false;
+      trigger  = ov.trigger || '';
+    }
+
+    const row = document.createElement('div');
+    row.className = 'vc-cmd-row';
+
+    // Toggle
+    const tog = document.createElement('label');
+    tog.className = 'tog-sw';
+    tog.innerHTML = `<input type="checkbox"${enabled ? ' checked' : ''}${!masterOn ? ' disabled' : ''}><div class="tog-track"></div><div class="tog-thumb"></div>`;
+    const chk = tog.querySelector('input');
+    chk.addEventListener('change', () => {
+      if (isVrField) {
+        settings[vrField] = chk.checked
+          ? inp.value.split(',').map(s => s.trim()).filter(Boolean)
+          : [];
+        saveSettings();
+        if (typeof vcOnSettingChange === 'function') vcOnSettingChange(vrField);
+      } else {
+        if (!settings.vcCommandOverrides[def.id]) settings.vcCommandOverrides[def.id] = {};
+        settings.vcCommandOverrides[def.id].enabled = chk.checked;
+        saveSettings();
+      }
+      labelEl.classList.toggle('vc-cmd-disabled', !chk.checked);
+      inp.disabled = !chk.checked;
+    });
+
+    // Label
+    const labelEl = document.createElement('div');
+    labelEl.className = 'vc-cmd-label' + (!masterOn || !enabled ? ' vc-cmd-disabled' : '');
+    labelEl.textContent = def.label;
+
+    // Trigger input
     const inp = document.createElement('input');
-    inp.type = 'text'; inp.className = 'msg-inp'; inp.value = word;
-    inp.addEventListener('input', () => {
-      settings[field][i] = inp.value;
-      saveSettings();
-    });
+    inp.type = 'text';
+    inp.className = 'vc-cmd-trigger';
+    inp.placeholder = def.builtin;
+    inp.value = trigger;
+    inp.disabled = !enabled || !masterOn;
     inp.addEventListener('change', () => {
-      // Commit on blur/enter — rebuild recognizer once the user is done typing
-      // rather than on every keystroke.
-      if (typeof vcOnSettingChange === 'function') vcOnSettingChange(field);
+      if (isVrField) {
+        settings[vrField] = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+        saveSettings();
+        if (typeof vcOnSettingChange === 'function') vcOnSettingChange(vrField);
+      } else {
+        if (!settings.vcCommandOverrides[def.id]) settings.vcCommandOverrides[def.id] = {};
+        settings.vcCommandOverrides[def.id].trigger = inp.value.toLowerCase().trim();
+        saveSettings();
+      }
     });
-    const del = document.createElement('button');
-    del.className = 'msg-del'; del.textContent = '\xd7';
-    del.addEventListener('click', () => {
-      settings[field].splice(i, 1);
-      saveSettings();
-      renderVrList(field, listId);
-      if (typeof vcOnSettingChange === 'function') vcOnSettingChange(field);
-    });
-    row.appendChild(inp); row.appendChild(del); list.appendChild(row);
-  });
-}
 
-function renderVrLists() {
-  renderVrList('vrGood', 'vr-good-list');
-  renderVrList('vrBad',  'vr-bad-list');
+    row.appendChild(tog);
+    row.appendChild(labelEl);
+    row.appendChild(inp);
+    container.appendChild(row);
+  }
 }
-
-['add-vr-good-btn', 'add-vr-bad-btn'].forEach(btnId => {
-  const field  = btnId === 'add-vr-good-btn' ? 'vrGood'       : 'vrBad';
-  const listId = btnId === 'add-vr-good-btn' ? 'vr-good-list' : 'vr-bad-list';
-  $(btnId).addEventListener('click', () => {
-    if (!Array.isArray(settings[field])) settings[field] = [];
-    settings[field].push('');
-    saveSettings();
-    renderVrList(field, listId);
-    const inputs = $(listId).querySelectorAll('.msg-inp');
-    if (inputs.length) inputs[inputs.length - 1].focus();
-  });
-});
 
 function renderDiagLog() {
   const el = $('diag-log-display');
@@ -543,10 +598,12 @@ if ($('diag-log-copy')) {
 }
 
 let _wasPaused = false;
+let _vcOverridesSnapshot = '{}';
 $('settings-btn').addEventListener('click', () => {
   _wasPaused = isPaused;
+  _vcOverridesSnapshot = JSON.stringify(settings.vcCommandOverrides || {});
   if (!isPaused && phase !== 'ready') { isPaused = true; render(); }
-  syncSettingsUI(); renderMsgList(); renderVrLists(); renderDiagLog(); renderBootStatus();
+  syncSettingsUI(); renderMsgList(); renderVcCmdList(); renderDiagLog(); renderBootStatus();
   renderSwStatus(); renderMemStatus();
   applyDebugReveal();
   const sbd = $('settings-build-date');
@@ -602,8 +659,8 @@ $('s-done-btn').addEventListener('click', () => {
   // triggers a recognizer rebuild). Then strip blank/whitespace-only entries
   // the user added but never filled in.
   const focused = document.activeElement;
-  if (focused && focused.classList && focused.classList.contains('msg-inp') &&
-      focused.closest && focused.closest('#vr-good-list, #vr-bad-list')) {
+  if (focused && focused.closest &&
+      focused.closest('#vc-cmd-list')) {
     focused.blur();
   }
   let vrChanged = false;
@@ -619,6 +676,11 @@ $('s-done-btn').addEventListener('click', () => {
   if (vrChanged) {
     saveSettings();
     if (typeof vcOnSettingChange === 'function') vcOnSettingChange('vrGood');
+  }
+
+  if (JSON.stringify(settings.vcCommandOverrides || {}) !== _vcOverridesSnapshot) {
+    saveSettings();
+    if (typeof vcOnSettingChange === 'function') vcOnSettingChange('vcCommandOverrides');
   }
 
   $('settings-overlay').classList.remove('open');

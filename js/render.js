@@ -88,7 +88,9 @@ function render() {
   elRestQ.style.display = (isReady || isRest) ? 'flex' : 'none';
   if (isReady || isRest) {
     const ps = elRestQ.querySelectorAll('p');
-    const q  = settings.restQ || ['', '', ''];
+    const q  = isRest
+      ? (settings.restQClose || ['', '']).concat([''])
+      : (settings.restQ     || ['', '', '']);
     for (let i = 0; i < 3; i++) {
       if (ps[i]) { ps[i].textContent = q[i] || ''; ps[i].style.display = q[i] ? '' : 'none'; }
     }

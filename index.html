@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-28 17:37 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-28 17:37">
+     with 2026-05-30 02:40 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-30 02:40">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -228,7 +228,7 @@
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-28 17:37 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-30 02:40 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -812,37 +812,25 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
       <input type="range" id="s-vol" min="0.0" max="1.0" step="0.05" value="0.35" style="flex:1;">
     </div>
   </div>
-  <div class="s-sec">Rest Questions</div>
+  <div class="s-sec">Opening Questions</div>
+  <div class="s-sub" style="padding-bottom:8px;">Shown on the start screen before each chunk.</div>
   <div class="s-row" style="flex-direction:column; align-items:stretch; gap:8px; padding: 10px 0;">
     <input type="text" class="msg-inp" id="s-restq1" placeholder="Question 1">
     <input type="text" class="msg-inp" id="s-restq2" placeholder="Question 2">
     <input type="text" class="msg-inp" id="s-restq3" placeholder="Question 3 (optional)">
   </div>
+  <div class="s-sec">Closing Questions</div>
+  <div class="s-sub" style="padding-bottom:8px;">Shown during the rest break after each chunk.</div>
+  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:8px; padding: 10px 0;">
+    <input type="text" class="msg-inp" id="s-restqc1" placeholder="Question 1">
+    <input type="text" class="msg-inp" id="s-restqc2" placeholder="Question 2 (optional)">
+  </div>
   <div class="s-sec">Micro-break reminders</div>
   <div id="msg-list"></div>
   <button id="add-msg-btn">+ Add reminder</button>
-  <div class="s-sec">Voice Control</div>
-  <div class="s-row" style="flex-direction:column; align-items:stretch; gap:14px; padding: 10px 0;">
-    <div>
-      <div class="s-label" style="margin-bottom:8px;">Words for &ldquo;correct&rdquo;</div>
-      <div id="vr-good-list"></div>
-      <button id="add-vr-good-btn" class="add-list-btn">+ Add word</button>
-    </div>
-    <div>
-      <div class="s-label" style="margin-bottom:8px;">Words for &ldquo;wrong&rdquo;</div>
-      <div id="vr-bad-list"></div>
-      <button id="add-vr-bad-btn" class="add-list-btn">+ Add word</button>
-    </div>
-    <div class="s-sub" style="line-height:1.5;">
-      Built-in commands also include:
-      &ldquo;start&rdquo;, &ldquo;ready&rdquo;, &ldquo;done&rdquo;, &ldquo;next&rdquo;,
-      &ldquo;pause&rdquo;, &ldquo;play&rdquo;,
-      &ldquo;settings&rdquo;, &ldquo;info&rdquo;, &ldquo;information&rdquo;, &ldquo;close&rdquo;,
-      &ldquo;review&rdquo;, &ldquo;recording&rdquo;, &ldquo;replay&rdquo;,
-      and &ldquo;rep counter&rdquo; / &ldquo;counter&rdquo; / &ldquo;reps&rdquo;.
-      Each works only on the screens where its action makes sense.
-    </div>
-  </div>
+  <div class="s-sec" style="margin-top:4px;">Navigation Commands</div>
+  <div class="s-sub" style="padding: 0 0 10px;">Toggle commands or replace trigger words (comma-separated). Changes apply when you close settings.</div>
+  <div id="vc-cmd-list"></div>
   <!-- Diagnostics section is hidden by default. Revealed by 7 taps in
        the bottom tap zone (#s-debug-tap-zone). Persisted in
        'mb-debug-revealed' localStorage key. -->

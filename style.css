@@ -777,6 +777,11 @@ transition: background 0.12s, color 0.12s;
 .info-heading { font-family: var(--font-info); font-size: var(--font-info-heading); font-weight: 600; letter-spacing: 0.04em; color: #1a1008; }
 .info-subheading { font-family: var(--font-info); font-size: var(--font-info-subheading); color: rgba(0,0,0,0.40); letter-spacing: 0.06em; margin-top: 2px; }
 hr.info-divider { border: none; border-top: 1px solid rgba(0,0,0,0.12); margin: 0; }
+#info-tip-row { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 2px 0; }
+.info-tip-label { font-family: var(--font-info); font-size: var(--font-info-body); font-weight: 300; color: rgba(0,0,0,0.55); margin: 0; }
+#tip-btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none !important; font-family: var(--font); font-size: clamp(13px, 3.5vw, 15px); padding: 10px 24px; border-radius: 999px; cursor: pointer; background: var(--color-green); color: #fff; transition: background 0.15s; letter-spacing: 0.01em; }
+#tip-btn:active { background: var(--color-green-dark); }
+.tip-icon { font-size: 1.45em; line-height: 1; }
 
 /* Welcome overlay */
 #welcome-overlay {

@@ -11,8 +11,8 @@
 <meta name="theme-color" id="meta-theme" content="#0d0d0d">
 <!-- Stamped by scripts/deploy.sh — used by the inline version-coherence
      check below to detect a hybrid-cache state at launch. Source ships
-     with 2026-05-30 02:40 as the literal placeholder. -->
-<meta name="microbreaker-build" content="2026-05-30 02:40">
+     with 2026-05-30 03:03 as the literal placeholder. -->
+<meta name="microbreaker-build" content="2026-05-30 03:03">
 <!-- PWA home-screen icon. MUST be a real PNG file reference — iOS Safari
      "Add to Home Screen" does not reliably accept data: URLs or JS-generated
      canvas icons. If you change this, test on iPad Safari: Share → Add to
@@ -228,7 +228,7 @@
   var current = (meta && meta.content) || null;
   // Treat the unstamped placeholder as no-info (running source uncompiled).
   // The placeholder string is built from string concatenation so the
-  // deploy.sh sed pass on this file (which replaces 2026-05-30 02:40 with
+  // deploy.sh sed pass on this file (which replaces 2026-05-30 03:03 with
   // the actual build) cannot match it as a contiguous substring. If we
   // wrote the literal here, sed would replace this check itself, turning
   // it into "if current === <build>" — i.e., treating every clean deploy
@@ -767,6 +767,10 @@ if (window._mbShowUpgradeModal) window._mbShowUpgradeModal(window._mbUpgrade);
     <p class="info-p">If the record/review feature is not working on iPhone or iPad, go to <strong>Settings → Safari → Microphone</strong> and make sure it is not set to "Deny."</p>
     <p class="info-p">The microphone indicator stays on between practice rounds — this is intentional, to avoid re-requesting microphone permission. Recording only occurs during the Practice phase.</p>
     <p class="info-p">If you have feedback, email <a id="contact-link" href="mailto:microbreaktimer@gmail.com">microbreaktimer@gmail.com</a>.</p>
+    <div id="info-tip-row">
+      <p class="info-tip-label">Enjoying Practice Buddy? Leave me a tip!</p>
+      <a id="tip-btn" href="https://donate.stripe.com/7sY4gz58742f59g0U64ow01" target="_blank" rel="noopener noreferrer"><span class="tip-icon">☕</span>&thinsp;Leave Casey a tip</a>
+    </div>
     <p class="info-p" style="opacity:0.45;" id="build-date-display"></p>
     <p style="font-family:var(--font-info);font-size:var(--font-info-subheading);color:rgba(0,0,0,0.40);line-height:1.6;margin-top:4px;">
       Eighth note icon by <a href="https://commons.wikimedia.org/wiki/File:Eighth_Note.svg" target="_blank" style="color:rgba(0,0,0,0.50);">PianistHere</a>, used under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" style="color:rgba(0,0,0,0.50);">CC BY-SA 4.0</a>.
